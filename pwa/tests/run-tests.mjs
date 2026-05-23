@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { extractRecipeFromHTML, parseIngredientLine, parseRecipeText, splitInstructions } from "../src/parser.js";
+import { extractRecipeFromHTML, importRecipeFromURL, parseIngredientLine, parseRecipeText, splitInstructions } from "../src/parser.js";
 import { convertAmount, formatFraction, scaleAmount } from "../src/units.js";
 
 if (!globalThis.crypto?.randomUUID) {
@@ -16,6 +16,10 @@ assert.equal(ingredient.name, "all-purpose flour");
 const prepared = parseIngredientLine("2 tbsp finely chopped parsley");
 assert.equal(prepared.preparationNote, "finely chopped");
 assert.equal(prepared.name, "parsley");
+
+const unicodeIngredient = parseIngredientLine("\u00bd cup sugar");
+assert.equal(unicodeIngredient.amount, 0.5);
+assert.equal(unicodeIngredient.unit, "cup");
 
 assert.deepEqual(splitInstructions("1. Heat the oven. 2. Mix the batter. 3. Bake until golden."), [
   "Heat the oven.",
@@ -39,6 +43,24 @@ assert.equal(parsed.title, "Lemon Pasta");
 assert.equal(parsed.originalServings, 4);
 assert.equal(parsed.ingredients.length, 2);
 assert.equal(parsed.instructions.length, 2);
+
+const ocrParsed = parseRecipeText(`
+Blueberry Muffins
+Serves 6
+INGREDlENTS
+\u2022 \u00bd cup sugar
+\u2022 2 cups flour
+\u2022 1 tsp baking powder
+DIRECTIONS
+Step 1 Heat the oven to 180C.
+Step 2 Mix the dry ingredients.
+Step 3 Bake until golden.
+`);
+assert.equal(ocrParsed.title, "Blueberry Muffins");
+assert.equal(ocrParsed.originalServings, 6);
+assert.equal(ocrParsed.ingredients.length, 3);
+assert.equal(ocrParsed.ingredients[0].amount, 0.5);
+assert.equal(ocrParsed.instructions.length, 3);
 
 assert.equal(scaleAmount(2, 4, 6), 3);
 assert.equal(formatFraction(1.5), "1 1/2");
@@ -113,5 +135,26 @@ assert.equal(readerExtracted.ingredients.length, 14);
 assert.equal(readerExtracted.instructions.length, 5);
 assert.ok(readerExtracted.ingredients.some((item) => item.originalText === "1/2 cup peanuts roasted and coarsely chopped"));
 assert.ok(!readerExtracted.instructions.some((step) => step.text.includes("Our favorite Pad Thai sauce")));
+
+const originalFetch = globalThis.fetch;
+const appShell = `<!doctype html><html><head><title>Recipe Cookbook</title></head><body><button id="addRecipeButton">+</button></body></html>`;
+const requestedURLs = [];
+globalThis.fetch = async (url) => {
+  requestedURLs.push(String(url));
+  return {
+    ok: true,
+    status: 200,
+    text: async () => (String(url).includes("r.jina.ai") ? readerMarkdown : appShell)
+  };
+};
+
+try {
+  const importedFromFallback = await importRecipeFromURL("https://ministryofcurry.com/vegetarian-pad-thai/");
+  assert.equal(importedFromFallback.title, "Vegetarian Pad Thai");
+  assert.equal(importedFromFallback.ingredients.length, 14);
+  assert.ok(requestedURLs.some((url) => url.includes("r.jina.ai")));
+} finally {
+  globalThis.fetch = originalFetch;
+}
 
 console.log("PWA parser/unit tests passed.");

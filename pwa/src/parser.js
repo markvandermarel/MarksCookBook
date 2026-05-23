@@ -118,12 +118,20 @@ export async function importRecipeFromURL(urlText) {
     const response = await fetch(url, { credentials: "omit" });
     if (!response.ok) throw new Error("The recipe page could not be loaded.");
     const html = await response.text();
-    return extractRecipeFromHTML(html, url.href);
+    const recipe = extractRecipeFromHTML(html, url.href);
+    if (!isUsefulImportedRecipe(recipe) || looksLikeAppShell(html)) {
+      throw new Error("No recipe was found in the page response.");
+    }
+    return recipe;
   } catch {
     const readerResponse = await fetch(`https://r.jina.ai/http://${url.href}`, { credentials: "omit" });
     if (!readerResponse.ok) throw new Error("The recipe page could not be loaded.");
     const readableText = await readerResponse.text();
-    return extractRecipeFromHTML(readableText, url.href);
+    const recipe = extractRecipeFromHTML(readableText, url.href);
+    if (!isUsefulImportedRecipe(recipe)) {
+      throw new Error("The recipe page was loaded, but no ingredients or instructions were found.");
+    }
+    return recipe;
   }
 }
 
@@ -286,15 +294,15 @@ function splitSections(lines) {
   const sections = { description: [], ingredients: [], instructions: [] };
 
   for (const line of lines) {
-    const key = line.toLowerCase().replace(/:$/, "");
+    const heading = sectionHeading(line);
 
-    if (ingredientHeadings.has(key)) {
+    if (heading === "ingredients") {
       section = "ingredients";
       sawIngredientHeading = true;
       continue;
     }
 
-    if (instructionHeadings.has(key)) {
+    if (heading === "instructions") {
       section = "instructions";
       sawInstructionHeading = true;
       continue;
@@ -320,8 +328,7 @@ function splitSections(lines) {
 function detectTitle(lines) {
   return (
     lines.find((line) => {
-      const key = line.toLowerCase().replace(/:$/, "");
-      return !ingredientHeadings.has(key) && !instructionHeadings.has(key) && !/^serves?\b/i.test(line);
+      return !sectionHeading(line) && !/^serves?\b/i.test(line);
     }) || "Untitled Recipe"
   );
 }
@@ -351,7 +358,7 @@ function looksLikeIngredient(line) {
 }
 
 function looksLikeInstruction(line) {
-  return /^(?:\d+[.)]\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack)\b/i.test(line);
+  return /^(?:step\s*)?(?:\d+[.)]?\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack|remove|cover|transfer|fold)\b/i.test(line);
 }
 
 function parseLeadingQuantity(tokens) {
@@ -385,12 +392,12 @@ function parseFraction(token) {
 function unicodeFraction(token) {
   return (
     {
-      "½": 0.5,
-      "⅓": 1 / 3,
-      "⅔": 2 / 3,
-      "¼": 0.25,
-      "¾": 0.75,
-      "⅛": 0.125
+      "\u00bd": 0.5,
+      "\u2153": 1 / 3,
+      "\u2154": 2 / 3,
+      "\u00bc": 0.25,
+      "\u00be": 0.75,
+      "\u215b": 0.125
     }[token] ?? null
   );
 }
@@ -496,7 +503,7 @@ function detectHTMLTitle(html) {
 }
 
 function cleanText(text) {
-  return decodeEntities(String(text)).replace(/\r/g, "\n").replace(/\t/g, " ");
+  return normalizeRecipeText(decodeEntities(String(text)));
 }
 
 function normalizeLine(text) {
@@ -513,12 +520,57 @@ function decodeEntities(text) {
     .replace(/&gt;/g, ">");
 }
 
+function normalizeRecipeText(text) {
+  return String(text)
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201c\u201d]/g, '"')
+    .replace(/[\u2022\u25aa\u25ab\u25a1\u25a2\u2610]/g, " ")
+    .replace(/\u00bd/g, "1/2")
+    .replace(/\u2153/g, "1/3")
+    .replace(/\u2154/g, "2/3")
+    .replace(/\u00bc/g, "1/4")
+    .replace(/\u00be/g, "3/4")
+    .replace(/\u215b/g, "1/8")
+    .replace(/(^|\n)\s*(ingredients?|ingredlents?|you will need|what you need)\s*:?/gim, "\n$2\n")
+    .replace(/(^|\n)\s*(instructions?|directions?|method|preparation|steps)\s*:?/gim, "\n$2\n")
+    .replace(/(\d(?:\s+\d+\/\d+|\/\d+)?)(?=(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|g|grams?|kg|ml|l|oz|ounces?|lb|lbs)\b)/gi, "$1 ")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
 function safeHost(url) {
   try {
     return new URL(url).host;
   } catch {
     return "";
   }
+}
+
+function sectionHeading(line) {
+  const key = normalizeLine(line)
+    .toLowerCase()
+    .replace(/[^a-z ]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need)$/.test(key)) {
+    return "ingredients";
+  }
+
+  if (instructionHeadings.has(key) || /^(instructions?|directions?|method|preparation|steps|cooking method)$/.test(key)) {
+    return "instructions";
+  }
+
+  return "";
+}
+
+function isUsefulImportedRecipe(recipe) {
+  return recipe.ingredients.length > 0 && recipe.instructions.length > 0;
+}
+
+function looksLikeAppShell(text) {
+  return /id=["']addRecipeButton["']/.test(text) && /Recipe Cookbook/i.test(text);
 }
 
 function recipeCardLines(lines) {

@@ -154,6 +154,8 @@ async function parseAndSaveImport() {
       recipe = sourceText.includes("<") ? extractRecipeFromHTML(sourceText, urlText) : parseRecipeText(sourceText, state.importMode);
     }
 
+    validateImportedRecipe(recipe, state.importMode);
+
     if (state.selectedPhotoBlob) {
       const blobId = await saveImageBlob(state.selectedPhotoBlob, { type: "scan" });
       recipe.images.unshift({
@@ -177,6 +179,18 @@ async function parseAndSaveImport() {
   } finally {
     elements.parseRecipeButton.disabled = false;
   }
+}
+
+function validateImportedRecipe(recipe, mode) {
+  if (recipe.ingredients.length || recipe.instructions.length) return;
+
+  const guidance =
+    mode === "photo"
+      ? "No ingredients or instructions were found. Try a clearer photo, better lighting, or paste corrected OCR text."
+      : mode === "url"
+        ? "No ingredients or instructions were found. The site may block imports; paste the page text or HTML into the box."
+        : "No ingredients or instructions were found. Check the recipe text and try again.";
+  throw new Error(guidance);
 }
 
 async function reloadRecipes() {

@@ -36,6 +36,8 @@ For iPhone installation and offline service-worker support, deploy the `pwa/` fo
 4. Tap **Add to Home Screen**.
 5. Launch **Cookbook** from the Home Screen.
 
+After deploying an update, open the HTTPS URL in Safari once before launching from the Home Screen. This lets the service worker refresh its cached app files.
+
 ## Features
 
 - Recipe library with iPhone and iPad responsive layouts.
