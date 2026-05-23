@@ -68,4 +68,50 @@ assert.equal(extracted.title, "Tomato Soup");
 assert.equal(extracted.ingredients.length, 2);
 assert.equal(extracted.images[0].remoteURL, "https://example.com/soup.jpg");
 
+const readerMarkdown = `
+Title: Vegetarian Pad Thai
+
+## Recipe
+Please click on the stars in the recipe card below
+Fry up this vegetarian pad thai in a wok and dinner is ready in less than half an hour. Add tofu for a hearty vegetarian family dinner.
+Prep Time 15 minutes
+Cook Time 15 minutes
+Total Time 30 minutes
+Course: dinner, Lunch
+Cuisine: Thai
+Servings:
+Calories: 589 kcal
+*   ▢  14 oz[Extra Firm Tofu baked](https://ministryofcurry.com/how-to-cook-tofu/)
+*   ▢  8 oz rice noodles A Taste of Thai linguini rice noodles
+*   ▢  5 cups water
+*   ▢  3 tablespoons[oil](https://amzn.to/4maZYU7)
+*   ▢  1 tablespoon garlic minced
+*   ▢  1 bunch scallions
+*   ▢  1 small red pepper
+*   ▢  1 small yellow pepper
+*   ▢  2 eggs whisked
+*   ▢  6 oz[Pad Thai Sauce](https://amzn.to/3kYtm11)**
+*   ▢  3 cups bean sprouts
+*   ▢  ½ cup[peanuts](https://amzn.to/3qab9Pj)roasted and coarsely chopped
+*   ▢  ½ cup[cilantro](https://ministryofcurry.com/fresh-cilantro/)finely chopped
+*   ▢  ½ lime cut into 4 wedges
+*   Bring 5 cups of water to a full boil. Place the rice noodles in a bowl and pour hot water over them. Mix with a fork so the noodles separate and not stick to each other.
+*   While the noodles are soaking, prep the vegetables. Cut the white portion of the scallions and chop into thin strips.
+*   Heat half of the oil in a large wok over high heat. Add garlic, white scallions, and peppers.
+*   Next add the cooked noodles, baked tofu, and the Pad Thai Sauce. Mix well with a pair of tongs.
+*   Add bean sprouts. Add half of the chopped green scallions, half of the peanuts, and half of the cilantro.
+*   Our favorite Pad Thai sauce is from the Maesri brand. It comes in a 9 oz jar and you can add more to taste.
+*   The second choice for store-bought sauce would be Thai Kitchen Pad Thai Sauce.
+**Homemade Pad Thai Sauce:**
+Mix together the ingredients below in a small saucepan.
+*   2 tablespoons soy sauce
+`;
+const readerExtracted = extractRecipeFromHTML(readerMarkdown, "https://ministryofcurry.com/vegetarian-pad-thai/");
+assert.equal(readerExtracted.title, "Vegetarian Pad Thai");
+assert.equal(readerExtracted.description, "Fry up this vegetarian pad thai in a wok and dinner is ready in less than half an hour. Add tofu for a hearty vegetarian family dinner.");
+assert.equal(readerExtracted.ingredients.length, 14);
+assert.equal(readerExtracted.instructions.length, 5);
+assert.ok(readerExtracted.ingredients.some((item) => item.originalText === "1/2 cup peanuts roasted and coarsely chopped"));
+assert.ok(!readerExtracted.instructions.some((step) => step.text.includes("Our favorite Pad Thai sauce")));
+
 console.log("PWA parser/unit tests passed.");

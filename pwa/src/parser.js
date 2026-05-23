@@ -114,10 +114,17 @@ export function splitInstructions(text) {
 
 export async function importRecipeFromURL(urlText) {
   const url = new URL(urlText);
-  const response = await fetch(url, { credentials: "omit" });
-  if (!response.ok) throw new Error("The recipe page could not be loaded.");
-  const html = await response.text();
-  return extractRecipeFromHTML(html, url.href);
+  try {
+    const response = await fetch(url, { credentials: "omit" });
+    if (!response.ok) throw new Error("The recipe page could not be loaded.");
+    const html = await response.text();
+    return extractRecipeFromHTML(html, url.href);
+  } catch {
+    const readerResponse = await fetch(`https://r.jina.ai/http://${url.href}`, { credentials: "omit" });
+    if (!readerResponse.ok) throw new Error("The recipe page could not be loaded.");
+    const readableText = await readerResponse.text();
+    return extractRecipeFromHTML(readableText, url.href);
+  }
 }
 
 export function extractRecipeFromHTML(html, sourceURL = "") {
@@ -133,10 +140,24 @@ export function extractRecipeFromHTML(html, sourceURL = "") {
     return recipeFromStructuredData(recipeObject, metadata);
   }
 
-  const fallbackText = htmlToText(html);
-  const recipe = parseRecipeText(fallbackText, "url", metadata);
-  recipe.title = recipe.title === "Untitled Recipe" ? detectHTMLTitle(html) || recipe.title : recipe.title;
-  return recipe;
+  const fallbackText = html.includes("<") ? htmlToText(html) : html;
+  const fallbackLines = cleanMarkdownRecipeText(fallbackText)
+    .split("\n")
+    .map(normalizeLine)
+    .filter(Boolean);
+  const detectedTitle = detectReaderTitle(fallbackLines) || detectHTMLTitle(html);
+  const titleOverride = detectedTitle ? cleanTitle(detectedTitle) : "";
+  const cardRecipe = parseRecipeCardText(fallbackText, metadata, titleOverride);
+
+  if (hasRecipeCardSignal(fallbackLines) && cardRecipe.ingredients.length >= 3 && cardRecipe.instructions.length >= 2) {
+    return cardRecipe;
+  }
+
+  const focusedText = focusRecipeText(fallbackText);
+  const fallbackRecipe = parseRecipeText(focusedText, "url", metadata);
+  fallbackRecipe.title = cleanTitle(fallbackRecipe.title === "Untitled Recipe" ? detectHTMLTitle(html) || fallbackRecipe.title : fallbackRecipe.title);
+
+  return recipeScore(cardRecipe) >= recipeScore(fallbackRecipe) ? cardRecipe : fallbackRecipe;
 }
 
 export function htmlToText(html) {
@@ -194,6 +215,65 @@ function recipeFromStructuredData(object, metadata) {
         ]
       : [],
     sourceMetadata,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+function parseRecipeCardText(text, metadata, titleOverride = "") {
+  const cleaned = cleanMarkdownRecipeText(text);
+  const lines = cleaned
+    .split("\n")
+    .map(normalizeLine)
+    .filter(Boolean);
+
+  const cardLines = recipeCardLines(lines);
+  const title = cleanTitle(titleOverride || detectReaderTitle(lines) || detectTitle(cardLines));
+  const originalServings = detectServings(cardLines) || detectServings(lines) || 4;
+  const descriptionLines = [];
+  const ingredients = [];
+  const instructions = [];
+  let sawIngredient = false;
+  let sawInstruction = false;
+
+  for (const line of cardLines) {
+    if (skipCardLine(line, title)) continue;
+    if (stopCardLine(line)) break;
+    if (sawInstruction && isPostInstructionNoteLine(line)) break;
+
+    if (!sawIngredient && !sawInstruction && isCardDescriptionLine(line)) {
+      descriptionLines.push(line);
+      continue;
+    }
+
+    if (!sawInstruction && looksLikeIngredient(line)) {
+      ingredients.push(line);
+      sawIngredient = true;
+      continue;
+    }
+
+    if (looksLikeInstruction(line)) {
+      instructions.push(line);
+      sawInstruction = true;
+      continue;
+    }
+
+    if (sawInstruction && line.length > 50 && /^(serve|mix|cook|bake|heat|add|bring|place|drain|garnish|stir|whisk|pour|toss|cut|soak|prep)\b/i.test(line)) {
+      instructions.push(line);
+    }
+  }
+
+  return {
+    id: crypto.randomUUID(),
+    title,
+    description: descriptionLines.join(" "),
+    originalServings,
+    currentServings: originalServings,
+    sourceType: "url",
+    ingredients: ingredients.map((line, index) => ({ id: crypto.randomUUID(), order: index, ...parseIngredientLine(line) })),
+    instructions: instructions.map((text, index) => ({ id: crypto.randomUUID(), order: index, text })),
+    images: [],
+    sourceMetadata: metadata,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   };
@@ -271,7 +351,7 @@ function looksLikeIngredient(line) {
 }
 
 function looksLikeInstruction(line) {
-  return /^(?:\d+[.)]\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season)\b/i.test(line);
+  return /^(?:\d+[.)]\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack)\b/i.test(line);
 }
 
 function parseLeadingQuantity(tokens) {
@@ -340,31 +420,25 @@ function readJSONLDScripts(html) {
 }
 
 function findRecipeObject(values) {
+  const candidates = [];
   for (const value of values) {
-    const found = walkRecipeObject(value);
-    if (found) return found;
+    collectRecipeObjects(value, candidates);
   }
-  return null;
+  return candidates.sort((a, b) => recipeObjectScore(b) - recipeObjectScore(a))[0] || null;
 }
 
-function walkRecipeObject(value) {
+function collectRecipeObjects(value, candidates) {
   if (Array.isArray(value)) {
-    for (const item of value) {
-      const found = walkRecipeObject(item);
-      if (found) return found;
-    }
-    return null;
+    value.forEach((item) => collectRecipeObjects(item, candidates));
+    return;
   }
 
-  if (!value || typeof value !== "object") return null;
-  if (isRecipeType(value["@type"])) return value;
+  if (!value || typeof value !== "object") return;
+  if (isRecipeType(value["@type"])) candidates.push(value);
 
   for (const child of Object.values(value)) {
-    const found = walkRecipeObject(child);
-    if (found) return found;
+    collectRecipeObjects(child, candidates);
   }
-
-  return null;
 }
 
 function isRecipeType(value) {
@@ -445,6 +519,117 @@ function safeHost(url) {
   } catch {
     return "";
   }
+}
+
+function recipeCardLines(lines) {
+  const recipeIndex = findLastIndex(lines, (line) => /^#{0,3}\s*Recipe$/i.test(line));
+  const ingredientsIndex = findLastIndex(lines, (line) => /^#{0,4}\s*Ingredients:?$/i.test(line));
+  const start = recipeIndex >= 0 ? recipeIndex + 1 : ingredientsIndex >= 0 ? Math.max(0, ingredientsIndex - 8) : 0;
+  const endCandidates = [
+    findIndexAfter(lines, start, (line) => /^(#{1,4}\s*)?(Nutrition|Filed Under|Comments|More Recipes|More Main Dishes|Footer)\b/i.test(line)),
+    findIndexAfter(lines, start, (line) => /^Tried this recipe\?/i.test(line))
+  ].filter((index) => index >= 0);
+  const end = endCandidates.length ? Math.min(...endCandidates) : lines.length;
+  return lines.slice(start, end);
+}
+
+function focusRecipeText(text) {
+  const cleaned = cleanMarkdownRecipeText(text);
+  const lines = cleaned
+    .split("\n")
+    .map(normalizeLine)
+    .filter(Boolean);
+  return recipeCardLines(lines).join("\n") || cleaned;
+}
+
+function cleanMarkdownRecipeText(text) {
+  return cleanText(text)
+    .replace(/!\[[^\]]*]\([^)]+\)/g, " ")
+    .replace(/\[([^\]]+)]\([^)]+\)/g, " $1 ")
+    .replace(/^[ \t]*[*-][ \t]+/gm, "")
+    .replace(/\u25a2/g, " ")
+    .replace(/\u00bd/g, "1/2")
+    .replace(/\u2153/g, "1/3")
+    .replace(/\u2154/g, "2/3")
+    .replace(/\u00bc/g, "1/4")
+    .replace(/\u00be/g, "3/4")
+    .replace(/\u215b/g, "1/8")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/\*\*/g, "")
+    .replace(/\s+\*\*/g, " ")
+    .replace(/[ \t]{2,}/g, " ");
+}
+
+function detectReaderTitle(lines) {
+  const titleLine = lines.find((line) => /^Title:\s+/i.test(line));
+  return titleLine ? titleLine.replace(/^Title:\s+/i, "") : "";
+}
+
+function cleanTitle(title) {
+  return normalizeLine(title)
+    .replace(/^Title:\s+/i, "")
+    .replace(/\s+-\s+.*$/i, "")
+    .replace(/\s+\|\s+.*$/i, "")
+    .replace(/\s+Recipe$/i, "")
+    .trim() || "Untitled Recipe";
+}
+
+function recipeScore(recipe) {
+  return recipe.ingredients.length * 3 + recipe.instructions.length * 4 + (recipe.title && recipe.title !== "Untitled Recipe" ? 4 : 0);
+}
+
+function recipeObjectScore(object) {
+  const typeValue = Array.isArray(object["@type"]) ? object["@type"].join(" ") : String(object["@type"] || "");
+  return (
+    (/\bRecipe\b/i.test(typeValue) ? 20 : 0) +
+    (object.recipeIngredient ? 30 : 0) +
+    (object.recipeInstructions ? 30 : 0) +
+    (object.name ? 5 : 0)
+  );
+}
+
+function hasRecipeCardSignal(lines) {
+  return lines.some((line) => /^#{0,4}\s*Recipe$/i.test(line)) || lines.some((line) => /^#{0,4}\s*Ingredients:?$/i.test(line));
+}
+
+function isCardDescriptionLine(line) {
+  return (
+    line.length > 35 &&
+    !/^((Prep|Cook|Total) Time|Course|Cuisine|Servings|Calories|Author|Equipment|Recipe Video|Print Recipe|Pin Recipe)/i.test(line) &&
+    !looksLikeIngredient(line) &&
+    !looksLikeInstruction(line)
+  );
+}
+
+function skipCardLine(line, title) {
+  return (
+    line.toLowerCase() === title.toLowerCase() ||
+    /^#{1,4}\s*/.test(line) ||
+    /^(Please click|Print Recipe|Pin Recipe|Save Saved|Prep Time|Cook Time|Total Time|Course|Cuisine|Servings:?(?:\s|$)|Calories|Author|Equipment|Recipe Video|Recipe Rating|Want to Save)/i.test(line) ||
+    /^\d+(\.\d+)?\s+from\s+\d+\s+votes/i.test(line)
+  );
+}
+
+function stopCardLine(line) {
+  return /^(Notes|Nutrition|Calories:|Carbohydrates:|Tried this recipe\?|Filed Under|Comments|More Main Dishes|Footer)\b/i.test(line);
+}
+
+function isPostInstructionNoteLine(line) {
+  return /^(Our favorite|The second choice|Homemade\b|Notes:?|Substitutions:?|Tips:?|Storage:?|Nutrition)\b/i.test(line);
+}
+
+function findLastIndex(values, predicate) {
+  for (let index = values.length - 1; index >= 0; index -= 1) {
+    if (predicate(values[index], index)) return index;
+  }
+  return -1;
+}
+
+function findIndexAfter(values, start, predicate) {
+  for (let index = start; index < values.length; index += 1) {
+    if (predicate(values[index], index)) return index;
+  }
+  return -1;
 }
 
 function emptyRecipe(sourceType, metadata) {

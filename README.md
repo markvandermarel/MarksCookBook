@@ -57,11 +57,9 @@ For iPhone installation and offline service-worker support, deploy the `pwa/` fo
 
 ## Browser OCR Limitation
 
-The PWA cannot use Apple Vision OCR because that framework is native-only. The current photo flow stores the image and parses pasted OCR text. Practical low-budget options:
+The PWA cannot use Apple Vision OCR because that framework is native-only. The photo flow now loads Tesseract.js in the browser, reads English text from the selected recipe photo, and places the extracted text into the import box for review before saving.
 
-- Use iPhone Live Text to copy text from a recipe image, then paste it into the import box.
-- Paste text from a website or PDF.
-- Add a future OCR adapter using Tesseract.js or a small cloud OCR endpoint.
+First-time OCR use needs an internet connection so the Tesseract.js library can be loaded from the CDN. If OCR cannot read the photo cleanly, use iPhone Live Text or paste corrected recipe text into the import box.
 
 The parser replacement point is `pwa/src/parser.js`.
 
@@ -111,7 +109,7 @@ If OneDrive is not connected or upload fails, images remain local and are marked
 
 ## URL Import Limitation
 
-Browser security rules prevent many sites from being fetched directly because of CORS. When URL import fails, paste the page text or HTML into the import dialog. Recipe JSON-LD parsing still works when HTML is available.
+Browser security rules prevent many sites from being fetched directly because of CORS. The importer first tries the original page and structured schema.org Recipe JSON-LD, then falls back to a reader-text fetch for blocked pages. If both paths fail, paste the page text or HTML into the import dialog.
 
 ## Tests
 
@@ -121,7 +119,7 @@ Run:
 npm test
 ```
 
-Tests cover ingredient parsing, instruction splitting, serving scaling, unit conversion, recipe text parsing, and schema.org HTML extraction.
+Tests cover ingredient parsing, instruction splitting, serving scaling, unit conversion, recipe text parsing, schema.org HTML extraction, and reader-style recipe-card extraction.
 
 ## File Layout
 
@@ -136,6 +134,7 @@ pwa/
     app.js
     config.js
     db.js
+    ocr.js
     onedrive.js
     parser.js
     units.js
@@ -149,6 +148,6 @@ Archives/
 
 - Add editable recipe correction screens.
 - Add import/export restore flow for JSON backups.
-- Add Tesseract.js or cloud OCR adapter.
+- Add a selectable cloud OCR adapter for difficult cookbook scans.
 - Add tags, cuisine, prep time, and cook time filters.
 - Add richer OneDrive backup sync for recipe metadata, not only images.

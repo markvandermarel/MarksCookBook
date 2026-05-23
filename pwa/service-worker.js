@@ -1,4 +1,4 @@
-const CACHE_NAME = "recipe-cookbook-pwa-v1";
+const CACHE_NAME = "recipe-cookbook-pwa-v2";
 
 const APP_SHELL = [
   "./",
@@ -9,6 +9,7 @@ const APP_SHELL = [
   "./src/app.js",
   "./src/config.js",
   "./src/db.js",
+  "./src/ocr.js",
   "./src/onedrive.js",
   "./src/parser.js",
   "./src/units.js"

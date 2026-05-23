@@ -1,5 +1,6 @@
 import { deleteRecipe, exportDatabase, getImageBlob, listRecipes, saveImageBlob, saveRecipe } from "./db.js";
 import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js";
+import { recognizeRecipeTextFromImage } from "./ocr.js";
 import {
   getAccountStatus,
   handleMicrosoftRedirect,
@@ -37,6 +38,7 @@ const elements = {
   urlImportFields: document.querySelector("#urlImportFields"),
   photoInput: document.querySelector("#photoInput"),
   photoPreview: document.querySelector("#photoPreview"),
+  ocrStatus: document.querySelector("#ocrStatus"),
   urlInput: document.querySelector("#urlInput"),
   recipeTextInput: document.querySelector("#recipeTextInput"),
   parseRecipeButton: document.querySelector("#parseRecipeButton"),
@@ -101,6 +103,18 @@ function bindEvents() {
     state.selectedPhotoBlob = file;
     elements.photoPreview.src = URL.createObjectURL(file);
     elements.photoPreview.classList.remove("hidden");
+    elements.ocrStatus.textContent = "Preparing OCR...";
+
+    try {
+      const text = await recognizeRecipeTextFromImage(file, (message) => {
+        elements.ocrStatus.textContent = message;
+      });
+      elements.recipeTextInput.value = text;
+      toast("Photo text extracted. Review it, then save.");
+    } catch (error) {
+      elements.ocrStatus.textContent = error.message || "OCR failed. You can paste the recipe text manually.";
+      toast(elements.ocrStatus.textContent);
+    }
   });
 }
 
@@ -114,6 +128,7 @@ function openImportDialog(mode) {
   elements.urlImportFields.classList.toggle("hidden", mode !== "url");
   elements.photoPreview.classList.add("hidden");
   elements.photoPreview.removeAttribute("src");
+  elements.ocrStatus.textContent = "After you choose a photo, the app will try to read the recipe text automatically.";
   elements.photoInput.value = "";
   elements.urlInput.value = "";
   elements.recipeTextInput.value = "";
@@ -455,7 +470,7 @@ function renderImages(recipe) {
             (image) => `
             <figure class="image-item">
               <img data-image-id="${image.id}" alt="${escapeHTML(image.type)} image">
-              <figcaption class="hint">${escapeHTML(displayImageType(image.type))}${image.syncStatus === "pendingUpload" ? " · Pending OneDrive sync" : ""}</figcaption>
+              <figcaption class="hint">${escapeHTML(displayImageType(image.type))}${image.syncStatus === "pendingUpload" ? " - Pending OneDrive sync" : ""}</figcaption>
             </figure>`
           )
           .join("")}

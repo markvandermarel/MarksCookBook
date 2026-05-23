@@ -63,15 +63,15 @@
         </header>
         <div class="dialog-actions">
           <button id="addPhotoOption" class="action-tile" type="button">
-            <span aria-hidden="true">⌾</span>
+            <span aria-hidden="true">Photo</span>
             <strong>Add from Photo</strong>
           </button>
           <button id="addUrlOption" class="action-tile" type="button">
-            <span aria-hidden="true">↗</span>
+            <span aria-hidden="true">URL</span>
             <strong>Add from URL</strong>
           </button>
           <button id="addManualOption" class="action-tile" type="button">
-            <span aria-hidden="true">T</span>
+            <span aria-hidden="true">Text</span>
             <strong>Add from Text</strong>
           </button>
         </div>
@@ -91,6 +91,7 @@
             <input id="photoInput" type="file" accept="image/*" capture="environment" />
           </label>
           <img id="photoPreview" class="photo-preview hidden" alt="Selected recipe page" />
+          <p id="ocrStatus" class="hint" aria-live="polite">After you choose a photo, the app will try to read the recipe text automatically.</p>
           <p class="hint">Photos are stored inside this app and can be uploaded to OneDrive. They are not saved to your normal Photos library by this app.</p>
         </div>
 
