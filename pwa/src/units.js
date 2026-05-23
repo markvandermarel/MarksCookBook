@@ -2,8 +2,8 @@ export const unitSystems = ["original", "us", "british", "metric"];
 
 const aliases = new Map([
   ["cup", "cup"], ["cups", "cup"], ["c", "cup"],
-  ["teaspoon", "teaspoon"], ["teaspoons", "teaspoon"], ["tsp", "teaspoon"],
-  ["tablespoon", "tablespoon"], ["tablespoons", "tablespoon"], ["tbsp", "tablespoon"], ["tbs", "tablespoon"],
+  ["teaspoon", "teaspoon"], ["teaspoons", "teaspoon"], ["tsp", "teaspoon"], ["tl", "teaspoon"], ["teelöffel", "teaspoon"], ["theelepel", "teaspoon"],
+  ["tablespoon", "tablespoon"], ["tablespoons", "tablespoon"], ["tbsp", "tablespoon"], ["tbs", "tablespoon"], ["el", "tablespoon"], ["esslöffel", "tablespoon"], ["eetlepel", "tablespoon"],
   ["fluid ounce", "fluidOunce"], ["fluid ounces", "fluidOunce"], ["fl oz", "fluidOunce"], ["floz", "fluidOunce"],
   ["ounce", "ounce"], ["ounces", "ounce"], ["oz", "ounce"],
   ["pound", "pound"], ["pounds", "pound"], ["lb", "pound"], ["lbs", "pound"],
@@ -12,7 +12,7 @@ const aliases = new Map([
   ["milliliter", "milliliter"], ["milliliters", "milliliter"], ["millilitre", "milliliter"], ["millilitres", "milliliter"], ["ml", "milliliter"],
   ["liter", "liter"], ["liters", "liter"], ["litre", "liter"], ["litres", "liter"], ["l", "liter"],
   ["celsius", "celsius"], ["fahrenheit", "fahrenheit"], ["f", "fahrenheit"],
-  ["piece", "piece"], ["pieces", "piece"], ["pc", "piece"], ["pcs", "piece"]
+  ["piece", "piece"], ["pieces", "piece"], ["pc", "piece"], ["pcs", "piece"], ["stück", "piece"], ["stücke", "piece"], ["stuks", "piece"], ["stuk", "piece"]
 ]);
 
 const unitLabels = {

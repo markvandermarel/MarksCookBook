@@ -62,6 +62,68 @@ assert.equal(ocrParsed.ingredients.length, 3);
 assert.equal(ocrParsed.ingredients[0].amount, 0.5);
 assert.equal(ocrParsed.instructions.length, 3);
 
+const germanScanParsed = parseRecipeText(`
+SÄURE
+FÜR 4 PERSONEN
+als Hauptgericht
+1 kleine rote Zwiebel, in
+feine Ringe gehobelt
+oder geschnitten (60 g)
+1 EL Apfelessig
+2 TL Zucker
+600 ml Sonnenblumenöl
+zum Frittieren
+2 Blöcke fester Tofu
+(à 280 g), trocken
+getupft und in
+2 cm große Würfel
+geschnitten
+2 EL Speisestärke
+2 Zwiebeln, grob gewürfelt (300 g)
+6 Knoblauchzehen, grob gehackt
+60 ml Olivenöl
+2 TL Kreuzkümmelsamen, im Mörser grob zerstoßen
+2-3 getrocknete schwarze Limetten
+(s. S. 18), in der Gewürzmühle zerkleinert
+2 EL Tomatenmark
+20 g Petersilie, grob gehackt
+250 g Babyspinat
+Salz und schwarzer Pfeffer
+NOORS TOFU MIT SCHWARZER LIMETTE
+Getrocknete Limetten verwenden wir schon seit Langem, doch in letzter Zeit deutlich häufiger.
+Wir servieren dieses Gericht gern mit gedämpftem Reis oder warmem Fladenbrot.
+1. Die Zwiebelringe mit dem Essig, 1 TL Zucker, und 1/8 TL Salz in eine kleine Schüssel geben und gut mischen.
+2. Das Sonnenblumenöl in einer mittelgroßen Pfanne mit hohem Rand erhitzen. Die Tofuwürfel in einer Schüssel mit der Speisestärke durchschwenken.
+3. Während der Tofu brät, die Sauce zubereiten. Zwiebelwürfel und Knoblauch im Mixer zerkleinern.
+4. Zum Servieren das Ganze auf einer Platte anrichten und die marinierten Zwiebeln daraufgeben.
+`);
+assert.equal(germanScanParsed.title, "NOORS TOFU MIT SCHWARZER LIMETTE");
+assert.equal(germanScanParsed.originalServings, 4);
+assert.equal(germanScanParsed.ingredients.length, 15);
+assert.ok(germanScanParsed.ingredients.some((item) => item.originalText.includes("1 EL Apfelessig")));
+assert.ok(germanScanParsed.ingredients.some((item) => item.originalText === "Salz und schwarzer Pfeffer"));
+assert.ok(germanScanParsed.description.includes("Getrocknete Limetten"));
+assert.equal(germanScanParsed.instructions.length, 4);
+assert.ok(germanScanParsed.instructions[0].text.startsWith("Die Zwiebelringe"));
+
+const dutchParsed = parseRecipeText(`
+Pompoensoep
+Voor 4 personen
+Ingrediënten
+1 ui, gesneden
+2 el olijfolie
+500 g pompoen
+Bereiding
+1. Verwarm de olie in een pan.
+2. Voeg de ui en pompoen toe.
+3. Kook tot alles zacht is.
+`);
+assert.equal(dutchParsed.title, "Pompoensoep");
+assert.equal(dutchParsed.originalServings, 4);
+assert.equal(dutchParsed.ingredients.length, 3);
+assert.equal(dutchParsed.ingredients[1].unit, "tablespoon");
+assert.equal(dutchParsed.instructions.length, 3);
+
 assert.equal(scaleAmount(2, 4, 6), 3);
 assert.equal(formatFraction(1.5), "1 1/2");
 const poundToMetric = convertAmount(1, "pound", "metric");

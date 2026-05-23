@@ -59,7 +59,7 @@ After deploying an update, open the HTTPS URL in Safari once before launching fr
 
 ## Browser OCR Limitation
 
-The PWA cannot use Apple Vision OCR because that framework is native-only. The photo flow now loads Tesseract.js in the browser, reads English text from the selected recipe photo, and places the extracted text into the import box for review before saving.
+The PWA cannot use Apple Vision OCR because that framework is native-only. The photo flow now loads Tesseract.js in the browser, reads English, German, and Dutch text from the selected recipe photo, and places the extracted text into the import box for review before saving.
 
 First-time OCR use needs an internet connection so the Tesseract.js library can be loaded from the CDN. If OCR cannot read the photo cleanly, use iPhone Live Text or paste corrected recipe text into the import box.
 

@@ -1,7 +1,31 @@
 import { parseUnit } from "./units.js";
 
-const ingredientHeadings = new Set(["ingredients", "ingredient", "you need"]);
-const instructionHeadings = new Set(["instructions", "directions", "method", "preparation", "steps"]);
+const ingredientHeadings = new Set([
+  "ingredients",
+  "ingredient",
+  "you need",
+  "ingredient list",
+  "zutaten",
+  "zutat",
+  "ingredlents",
+  "ingrediënten",
+  "ingredienten",
+  "benodigdheden",
+  "wat heb je nodig"
+]);
+const instructionHeadings = new Set([
+  "instructions",
+  "directions",
+  "method",
+  "preparation",
+  "steps",
+  "zubereitung",
+  "anleitung",
+  "methode",
+  "bereiding",
+  "werkwijze",
+  "stappen"
+]);
 const preparationWords = [
   "finely chopped",
   "finely diced",
@@ -14,7 +38,19 @@ const preparationWords = [
   "melted",
   "softened",
   "peeled",
-  "crushed"
+  "crushed",
+  "fein gehackt",
+  "grob gehackt",
+  "grob gewürfelt",
+  "geschnitten",
+  "gehobelt",
+  "zerstoßen",
+  "trocken getupft",
+  "fijngehakt",
+  "grof gehakt",
+  "gesneden",
+  "in blokjes",
+  "geplet"
 ];
 
 export function parseRecipeText(text, sourceType = "manual", metadata = {}) {
@@ -91,7 +127,9 @@ export function splitInstructions(text) {
   const normalized = normalizeLine(text.replace(/\r/g, "\n"));
   if (!normalized) return [];
 
-  const numbered = [...normalized.matchAll(/(?:^|\s)(?:step\s*)?\d+[.)]\s+(.*?)(?=(?:\s+(?:step\s*)?\d+[.)]\s+)|$)/gis)]
+  const stepWord = "(?:step|schritt|stap)";
+  const marker = `(?:(?:${stepWord}\\s*)?\\d+[.)]|${stepWord}\\s*\\d+)`;
+  const numbered = [...normalized.matchAll(new RegExp(`(?:^|\\s)${marker}\\s+(.*?)(?=(?:\\s+${marker}\\s+)|$)`, "gis"))]
     .map((match) => normalizeLine(match[1]))
     .filter(Boolean);
 
@@ -99,7 +137,7 @@ export function splitInstructions(text) {
 
   const lineSteps = text
     .split(/\n+/)
-    .map((line) => normalizeLine(line.replace(/^(?:step\s*)?\d+[.)]\s*/i, "")))
+    .map((line) => normalizeLine(line.replace(new RegExp(`^${marker}\\s*`, "i"), "")))
     .filter(Boolean);
 
   if (lineSteps.length > 1) return lineSteps;
@@ -288,6 +326,12 @@ function parseRecipeCardText(text, metadata, titleOverride = "") {
 }
 
 function splitSections(lines) {
+  const hasExplicitHeading = lines.some((line) => sectionHeading(line));
+  if (!hasExplicitHeading) {
+    const scanned = splitScannedSections(lines);
+    if (scanned) return scanned;
+  }
+
   let section = "description";
   let sawIngredientHeading = false;
   let sawInstructionHeading = false;
@@ -325,12 +369,62 @@ function splitSections(lines) {
   return sections;
 }
 
+function splitScannedSections(lines) {
+  const instructionIndex = lines.findIndex(isNumberedInstructionLine);
+  if (instructionIndex < 0) return null;
+
+  const beforeInstructions = lines.slice(0, instructionIndex);
+  const ingredientStartCount = beforeInstructions.filter(isIngredientStartLine).length;
+  if (ingredientStartCount < 2) return null;
+
+  const title = detectTitle(lines);
+  const sections = {
+    description: [],
+    ingredients: [],
+    instructions: lines.slice(instructionIndex)
+  };
+  let currentIngredient = "";
+
+  const flushIngredient = () => {
+    if (currentIngredient) {
+      sections.ingredients.push(currentIngredient);
+      currentIngredient = "";
+    }
+  };
+
+  for (const line of beforeInstructions) {
+    if (shouldSkipScannedLine(line, title)) {
+      flushIngredient();
+      continue;
+    }
+
+    if (isIngredientStartLine(line)) {
+      flushIngredient();
+      currentIngredient = line;
+      continue;
+    }
+
+    if (currentIngredient && isIngredientContinuationLine(line)) {
+      currentIngredient = `${currentIngredient} ${line}`;
+      continue;
+    }
+
+    flushIngredient();
+    if (isDescriptionLine(line)) sections.description.push(line);
+  }
+
+  flushIngredient();
+
+  return sections;
+}
+
 function detectTitle(lines) {
-  return (
-    lines.find((line) => {
-      return !sectionHeading(line) && !/^serves?\b/i.test(line);
-    }) || "Untitled Recipe"
-  );
+  const scored = lines
+    .map((line, index) => ({ line, score: titleScore(line, index) }))
+    .filter((candidate) => candidate.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  return scored[0]?.line || "Untitled Recipe";
 }
 
 function detectServings(lines) {
@@ -339,7 +433,10 @@ function detectServings(lines) {
     /\bserves\s*:?\s*(\d+(?:\.\d+)?)/i,
     /\byields?\s*:?\s*(\d+(?:\.\d+)?)/i,
     /\bmakes\s*:?\s*(\d+(?:\.\d+)?)/i,
-    /\bportions?\s*:?\s*(\d+(?:\.\d+)?)/i
+    /\bportions?\s*:?\s*(\d+(?:\.\d+)?)/i,
+    /\bfür\s*(\d+(?:\.\d+)?)\s*(?:personen|person|portionen|portion)?/i,
+    /\bvoor\s*(\d+(?:\.\d+)?)\s*(?:personen|persoon|porties|portie)?/i,
+    /\b(\d+(?:\.\d+)?)\s*(?:personen|portionen|porties)\b/i
   ];
 
   for (const pattern of patterns) {
@@ -350,6 +447,83 @@ function detectServings(lines) {
   return null;
 }
 
+function titleScore(line, index) {
+  const normalized = normalizeLine(line);
+  if (!normalized) return 0;
+  if (sectionHeading(normalized) || isServingLine(normalized) || isScanMetaLine(normalized)) return 0;
+  if (isIngredientStartLine(normalized) || isNumberedInstructionLine(normalized)) return 0;
+  if (/[.!?]$/.test(normalized) || normalized.length > 90 || normalized.length < 4) return 0;
+
+  const letters = normalized.replace(/[^A-Za-zÀ-ž]/g, "");
+  if (!letters) return 0;
+  const uppercaseLetters = letters.replace(/[^A-ZÀ-Þ]/g, "");
+  const words = normalized.split(/\s+/).filter(Boolean);
+  const uppercaseRatio = uppercaseLetters.length / letters.length;
+  let score = 8 - Math.min(index, 8) * 0.25;
+
+  if (words.length >= 2 && words.length <= 9) score += 4;
+  if (uppercaseRatio > 0.65) score += 8;
+  if (/^[A-ZÀ-Þ0-9\s,'-]+$/.test(normalized) && words.length > 2) score += 5;
+  if (/^[A-ZÀ-Þ]/.test(normalized)) score += 2;
+  if (normalized.includes(",")) score -= 2;
+  if (words.length === 1) score -= 5;
+
+  return score;
+}
+
+function isServingLine(line) {
+  return /\b(serves?|servings?|yield|makes|portions?|für|voor)\b.*\d/i.test(line) || /\b\d+\s*(personen|portionen|porties)\b/i.test(line);
+}
+
+function isScanMetaLine(line) {
+  const normalized = normalizeLine(line);
+  if (/^(als|as|voor|für)\b/i.test(normalized) && !/\d/.test(normalized)) return true;
+  if (/^(sauce|sauces|säure|beilage|hauptgericht|bijgerecht|hoofdgerecht)$/i.test(normalized)) return true;
+  return /^[A-ZÀ-ÞÄÖÜ\s-]{3,22}$/.test(normalized) && normalized.split(/\s+/).length <= 2;
+}
+
+function isNumberedInstructionLine(line) {
+  return /^(?:\d{1,2}|[ilI])[\).]\s+/.test(normalizeLine(line));
+}
+
+function isIngredientStartLine(line) {
+  const normalized = normalizeLine(line);
+  if (!normalized || sectionHeading(normalized) || isServingLine(normalized) || isNumberedInstructionLine(normalized)) return false;
+  if (/^\d+(?:[.,]\d+)?\s*(?:cm|mm|inch|inches)\b/i.test(normalized)) return false;
+  if (looksLikeIngredient(normalized)) return true;
+  return isNoAmountIngredientLine(normalized);
+}
+
+function isNoAmountIngredientLine(line) {
+  return (
+    line.length <= 48 &&
+    /^(?:salt|pepper|salt and pepper|salz|pfeffer|salz und schwarzer pfeffer|zout|peper|zout en peper)\b/i.test(line)
+  );
+}
+
+function isIngredientContinuationLine(line) {
+  const normalized = normalizeLine(line);
+  if (!normalized) return false;
+  if (sectionHeading(normalized) || isServingLine(normalized) || isNumberedInstructionLine(normalized)) return false;
+  if (titleScore(normalized, 0) >= 16) return false;
+  if (isIngredientStartLine(normalized)) return false;
+  if (/^[([]/.test(normalized)) return true;
+  if (/^[a-zà-žäöüß]/.test(normalized)) return true;
+  return normalized.length <= 58 && !/[.!?]$/.test(normalized);
+}
+
+function shouldSkipScannedLine(line, title) {
+  const normalized = normalizeLine(line);
+  return normalized.toLowerCase() === title.toLowerCase() || sectionHeading(normalized) || isServingLine(normalized) || isScanMetaLine(normalized);
+}
+
+function isDescriptionLine(line) {
+  const normalized = normalizeLine(line);
+  if (!normalized || isScanMetaLine(normalized) || isServingLine(normalized) || sectionHeading(normalized)) return false;
+  if (isIngredientStartLine(normalized) || isNumberedInstructionLine(normalized)) return false;
+  return normalized.length > 18;
+}
+
 function looksLikeIngredient(line) {
   const tokens = normalizeLine(line).split(" ").filter(Boolean);
   if (!tokens.length) return false;
@@ -358,7 +532,7 @@ function looksLikeIngredient(line) {
 }
 
 function looksLikeInstruction(line) {
-  return /^(?:step\s*)?(?:\d+[.)]?\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack|remove|cover|transfer|fold)\b/i.test(line);
+  return /^(?:(?:step|schritt|stap)\s*)?(?:\d+[.)]?\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack|remove|cover|transfer|fold|erhitzen|geben|mischen|braten|kochen|köcheln|hinzufügen|servieren|schneiden|hacken|unterrühren|umrühren|anrichten|verwarm|meng|voeg|bak|kook|laat|snijd|hak|serveer|doe|giet|roer)\b/i.test(line);
 }
 
 function parseLeadingQuantity(tokens) {
@@ -533,8 +707,8 @@ function normalizeRecipeText(text) {
     .replace(/\u00bc/g, "1/4")
     .replace(/\u00be/g, "3/4")
     .replace(/\u215b/g, "1/8")
-    .replace(/(^|\n)\s*(ingredients?|ingredlents?|you will need|what you need)\s*:?/gim, "\n$2\n")
-    .replace(/(^|\n)\s*(instructions?|directions?|method|preparation|steps)\s*:?/gim, "\n$2\n")
+    .replace(/(^|\n)\s*(ingredients?|ingredlents?|you will need|what you need|zutaten?|ingrediënten|ingredienten|benodigdheden|wat heb je nodig)\s*:?/gim, "\n$2\n")
+    .replace(/(^|\n)\s*(instructions?|directions?|method|preparation|steps|zubereitung|anleitung|methode|bereiding|werkwijze|stappen)\s*:?/gim, "\n$2\n")
     .replace(/(\d(?:\s+\d+\/\d+|\/\d+)?)(?=(?:cups?|tsp|teaspoons?|tbsp|tablespoons?|g|grams?|kg|ml|l|oz|ounces?|lb|lbs)\b)/gi, "$1 ")
     .replace(/\n{3,}/g, "\n\n");
 }
@@ -554,11 +728,11 @@ function sectionHeading(line) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need)$/.test(key)) {
+  if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need|zutaten?|ingrediënten|ingredienten|benodigdheden|wat heb je nodig)$/.test(key)) {
     return "ingredients";
   }
 
-  if (instructionHeadings.has(key) || /^(instructions?|directions?|method|preparation|steps|cooking method)$/.test(key)) {
+  if (instructionHeadings.has(key) || /^(instructions?|directions?|method|preparation|steps|cooking method|zubereitung|anleitung|methode|bereiding|werkwijze|stappen)$/.test(key)) {
     return "instructions";
   }
 
