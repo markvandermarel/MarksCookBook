@@ -1,0 +1,19 @@
+{
+  "name": "Recipe Cookbook",
+  "short_name": "Cookbook",
+  "description": "A private offline-first recipe cookbook for scanning, importing, scaling, and cooking recipes.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f7f2e8",
+  "theme_color": "#f7f2e8",
+  "icons": [
+    {
+      "src": "./assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

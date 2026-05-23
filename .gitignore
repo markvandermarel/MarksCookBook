@@ -1,0 +1,7 @@
+DerivedData/
+build/
+node_modules/
+npm-debug.log*
+*.xcuserdata/
+*.xcuserstate
+.DS_Store

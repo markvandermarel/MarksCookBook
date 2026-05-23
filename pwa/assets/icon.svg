@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Recipe Cookbook icon">
+  <rect width="512" height="512" rx="96" fill="#f7f2e8"/>
+  <path d="M154 116h188c24 0 44 20 44 44v236H146c-27 0-49-22-49-49V173c0-31 26-57 57-57Z" fill="#2563eb"/>
+  <path d="M146 396h240v-42H146c-13 0-24 9-24 21s11 21 24 21Z" fill="#e0f2fe"/>
+  <path d="M181 172h170M181 220h132M181 268h156" stroke="#fff" stroke-width="24" stroke-linecap="round"/>
+  <path d="M351 326c28 0 51-23 51-51v-34" stroke="#f97316" stroke-width="22" stroke-linecap="round" fill="none"/>
+  <path d="M396 224h42c0 34-18 57-46 65" stroke="#f97316" stroke-width="22" stroke-linecap="round" fill="none"/>
+</svg>

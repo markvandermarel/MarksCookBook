@@ -1,0 +1,575 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		AB0000000000000000000101 /* RecipeCookbookApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000101 /* RecipeCookbookApp.swift */; };
+		AB0000000000000000000102 /* AppError.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000102 /* AppError.swift */; };
+		AB0000000000000000000103 /* ParsedRecipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000103 /* ParsedRecipe.swift */; };
+		AB0000000000000000000104 /* RecipeModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000104 /* RecipeModels.swift */; };
+		AB0000000000000000000105 /* RecipeRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000105 /* RecipeRepository.swift */; };
+		AB0000000000000000000106 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000106 /* AppServices.swift */; };
+		AB0000000000000000000107 /* ImageStorageService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000107 /* ImageStorageService.swift */; };
+		AB0000000000000000000108 /* OCRService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000108 /* OCRService.swift */; };
+		AB0000000000000000000109 /* OneDriveService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000109 /* OneDriveService.swift */; };
+		AB0000000000000000000110 /* RecipeParsingService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000110 /* RecipeParsingService.swift */; };
+		AB0000000000000000000111 /* RecipeSearchService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000111 /* RecipeSearchService.swift */; };
+		AB0000000000000000000112 /* ServingScalerService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000112 /* ServingScalerService.swift */; };
+		AB0000000000000000000113 /* UnitConversionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000113 /* UnitConversionService.swift */; };
+		AB0000000000000000000114 /* URLRecipeImportService.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000114 /* URLRecipeImportService.swift */; };
+		AB0000000000000000000115 /* FractionFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000115 /* FractionFormatter.swift */; };
+		AB0000000000000000000116 /* NetworkMonitor.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000116 /* NetworkMonitor.swift */; };
+		AB0000000000000000000117 /* String+RecipeCleanup.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000117 /* String+RecipeCleanup.swift */; };
+		AB0000000000000000000118 /* AddRecipeViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000118 /* AddRecipeViewModel.swift */; };
+		AB0000000000000000000119 /* RecipeDetailViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000119 /* RecipeDetailViewModel.swift */; };
+		AB0000000000000000000120 /* RecipeLibraryViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000120 /* RecipeLibraryViewModel.swift */; };
+		AB0000000000000000000121 /* AddFromURLView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000121 /* AddFromURLView.swift */; };
+		AB0000000000000000000122 /* AddRecipeSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000122 /* AddRecipeSheet.swift */; };
+		AB0000000000000000000123 /* CameraCaptureView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000123 /* CameraCaptureView.swift */; };
+		AB0000000000000000000124 /* AsyncRecipeImageView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000124 /* AsyncRecipeImageView.swift */; };
+		AB0000000000000000000125 /* IngredientsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000125 /* IngredientsView.swift */; };
+		AB0000000000000000000126 /* InstructionStepModeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000126 /* InstructionStepModeView.swift */; };
+		AB0000000000000000000127 /* RecipeDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000127 /* RecipeDetailView.swift */; };
+		AB0000000000000000000128 /* RecipeCardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000128 /* RecipeCardView.swift */; };
+		AB0000000000000000000129 /* RecipeLibraryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000129 /* RecipeLibraryView.swift */; };
+		AB0000000000000000000130 /* RecipeListRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000130 /* RecipeListRowView.swift */; };
+		AB0000000000000000000201 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000201 /* Assets.xcassets */; };
+		AB0000000000000000000301 /* IngredientParsingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000301 /* IngredientParsingTests.swift */; };
+		AB0000000000000000000302 /* InstructionStepSplittingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000302 /* InstructionStepSplittingTests.swift */; };
+		AB0000000000000000000303 /* ServingScalerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000303 /* ServingScalerTests.swift */; };
+		AB0000000000000000000304 /* UnitConversionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000304 /* UnitConversionTests.swift */; };
+		AB0000000000000000000305 /* URLRecipeExtractionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000305 /* URLRecipeExtractionTests.swift */; };
+		AB0000000000000000000306 /* RecipeSearchTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000306 /* RecipeSearchTests.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AA000000000000000000000D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = AA0000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000004;
+			remoteInfo = RecipeCookbook;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		AA0000000000000000000006 /* RecipeCookbook.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = RecipeCookbook.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000007 /* RecipeCookbookTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = RecipeCookbookTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000101 /* RecipeCookbookApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeCookbookApp.swift; sourceTree = "<group>"; };
+		AA0000000000000000000102 /* AppError.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/AppError.swift; sourceTree = "<group>"; };
+		AA0000000000000000000103 /* ParsedRecipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/ParsedRecipe.swift; sourceTree = "<group>"; };
+		AA0000000000000000000104 /* RecipeModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models/RecipeModels.swift; sourceTree = "<group>"; };
+		AA0000000000000000000105 /* RecipeRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Repositories/RecipeRepository.swift; sourceTree = "<group>"; };
+		AA0000000000000000000106 /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/AppServices.swift; sourceTree = "<group>"; };
+		AA0000000000000000000107 /* ImageStorageService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ImageStorageService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000108 /* OCRService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OCRService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000109 /* OneDriveService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/OneDriveService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000110 /* RecipeParsingService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RecipeParsingService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000111 /* RecipeSearchService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/RecipeSearchService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000112 /* ServingScalerService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/ServingScalerService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000113 /* UnitConversionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/UnitConversionService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000114 /* URLRecipeImportService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Services/URLRecipeImportService.swift; sourceTree = "<group>"; };
+		AA0000000000000000000115 /* FractionFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities/FractionFormatter.swift; sourceTree = "<group>"; };
+		AA0000000000000000000116 /* NetworkMonitor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities/NetworkMonitor.swift; sourceTree = "<group>"; };
+		AA0000000000000000000117 /* String+RecipeCleanup.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Utilities/String+RecipeCleanup.swift; sourceTree = "<group>"; };
+		AA0000000000000000000118 /* AddRecipeViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels/AddRecipeViewModel.swift; sourceTree = "<group>"; };
+		AA0000000000000000000119 /* RecipeDetailViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels/RecipeDetailViewModel.swift; sourceTree = "<group>"; };
+		AA0000000000000000000120 /* RecipeLibraryViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewModels/RecipeLibraryViewModel.swift; sourceTree = "<group>"; };
+		AA0000000000000000000121 /* AddFromURLView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Add/AddFromURLView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000122 /* AddRecipeSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Add/AddRecipeSheet.swift; sourceTree = "<group>"; };
+		AA0000000000000000000123 /* CameraCaptureView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Add/CameraCaptureView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000124 /* AsyncRecipeImageView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Common/AsyncRecipeImageView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000125 /* IngredientsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Detail/IngredientsView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000126 /* InstructionStepModeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Detail/InstructionStepModeView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000127 /* RecipeDetailView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Detail/RecipeDetailView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000128 /* RecipeCardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Home/RecipeCardView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000129 /* RecipeLibraryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Home/RecipeLibraryView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000130 /* RecipeListRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Views/Home/RecipeListRowView.swift; sourceTree = "<group>"; };
+		AA0000000000000000000201 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Resources/Assets.xcassets; sourceTree = "<group>"; };
+		AA0000000000000000000202 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Resources/Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000301 /* IngredientParsingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IngredientParsingTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000302 /* InstructionStepSplittingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InstructionStepSplittingTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000303 /* ServingScalerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServingScalerTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000304 /* UnitConversionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnitConversionTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000305 /* URLRecipeExtractionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = URLRecipeExtractionTests.swift; sourceTree = "<group>"; };
+		AA0000000000000000000306 /* RecipeSearchTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeSearchTests.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		AA0000000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000012 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		AA0000000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000015 /* RecipeCookbook */,
+				AA0000000000000000000016 /* RecipeCookbookTests */,
+				AA0000000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000006 /* RecipeCookbook.app */,
+				AA0000000000000000000007 /* RecipeCookbookTests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000015 /* RecipeCookbook */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000101 /* RecipeCookbookApp.swift */,
+				AA0000000000000000000102 /* AppError.swift */,
+				AA0000000000000000000103 /* ParsedRecipe.swift */,
+				AA0000000000000000000104 /* RecipeModels.swift */,
+				AA0000000000000000000105 /* RecipeRepository.swift */,
+				AA0000000000000000000106 /* AppServices.swift */,
+				AA0000000000000000000107 /* ImageStorageService.swift */,
+				AA0000000000000000000108 /* OCRService.swift */,
+				AA0000000000000000000109 /* OneDriveService.swift */,
+				AA0000000000000000000110 /* RecipeParsingService.swift */,
+				AA0000000000000000000111 /* RecipeSearchService.swift */,
+				AA0000000000000000000112 /* ServingScalerService.swift */,
+				AA0000000000000000000113 /* UnitConversionService.swift */,
+				AA0000000000000000000114 /* URLRecipeImportService.swift */,
+				AA0000000000000000000115 /* FractionFormatter.swift */,
+				AA0000000000000000000116 /* NetworkMonitor.swift */,
+				AA0000000000000000000117 /* String+RecipeCleanup.swift */,
+				AA0000000000000000000118 /* AddRecipeViewModel.swift */,
+				AA0000000000000000000119 /* RecipeDetailViewModel.swift */,
+				AA0000000000000000000120 /* RecipeLibraryViewModel.swift */,
+				AA0000000000000000000121 /* AddFromURLView.swift */,
+				AA0000000000000000000122 /* AddRecipeSheet.swift */,
+				AA0000000000000000000123 /* CameraCaptureView.swift */,
+				AA0000000000000000000124 /* AsyncRecipeImageView.swift */,
+				AA0000000000000000000125 /* IngredientsView.swift */,
+				AA0000000000000000000126 /* InstructionStepModeView.swift */,
+				AA0000000000000000000127 /* RecipeDetailView.swift */,
+				AA0000000000000000000128 /* RecipeCardView.swift */,
+				AA0000000000000000000129 /* RecipeLibraryView.swift */,
+				AA0000000000000000000130 /* RecipeListRowView.swift */,
+				AA0000000000000000000201 /* Assets.xcassets */,
+				AA0000000000000000000202 /* Info.plist */,
+			);
+			path = RecipeCookbook;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000016 /* RecipeCookbookTests */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000301 /* IngredientParsingTests.swift */,
+				AA0000000000000000000302 /* InstructionStepSplittingTests.swift */,
+				AA0000000000000000000303 /* ServingScalerTests.swift */,
+				AA0000000000000000000304 /* UnitConversionTests.swift */,
+				AA0000000000000000000305 /* URLRecipeExtractionTests.swift */,
+				AA0000000000000000000306 /* RecipeSearchTests.swift */,
+			);
+			path = RecipeCookbookTests;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		AA0000000000000000000004 /* RecipeCookbook */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000041 /* Build configuration list for PBXNativeTarget "RecipeCookbook" */;
+			buildPhases = (
+				AA0000000000000000000008 /* Sources */,
+				AA0000000000000000000009 /* Frameworks */,
+				AA000000000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = RecipeCookbook;
+			productName = RecipeCookbook;
+			productReference = AA0000000000000000000006 /* RecipeCookbook.app */;
+			productType = "com.apple.product-type.application";
+		};
+		AA0000000000000000000005 /* RecipeCookbookTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000042 /* Build configuration list for PBXNativeTarget "RecipeCookbookTests" */;
+			buildPhases = (
+				AA0000000000000000000011 /* Sources */,
+				AA0000000000000000000012 /* Frameworks */,
+				AA0000000000000000000013 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				AA000000000000000000000E /* PBXTargetDependency */,
+			);
+			name = RecipeCookbookTests;
+			productName = RecipeCookbookTests;
+			productReference = AA0000000000000000000007 /* RecipeCookbookTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		AA0000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1530;
+				LastUpgradeCheck = 1530;
+				TargetAttributes = {
+					AA0000000000000000000004 = {
+						CreatedOnToolsVersion = 15.3;
+					};
+					AA0000000000000000000005 = {
+						CreatedOnToolsVersion = 15.3;
+						TestTargetID = AA0000000000000000000004;
+					};
+				};
+			};
+			buildConfigurationList = AA0000000000000000000040 /* Build configuration list for PBXProject "RecipeCookbook" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = AA0000000000000000000002;
+			productRefGroup = AA0000000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				AA0000000000000000000004 /* RecipeCookbook */,
+				AA0000000000000000000005 /* RecipeCookbookTests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		AA000000000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB0000000000000000000201 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000013 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		AA0000000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB0000000000000000000101 /* RecipeCookbookApp.swift in Sources */,
+				AB0000000000000000000102 /* AppError.swift in Sources */,
+				AB0000000000000000000103 /* ParsedRecipe.swift in Sources */,
+				AB0000000000000000000104 /* RecipeModels.swift in Sources */,
+				AB0000000000000000000105 /* RecipeRepository.swift in Sources */,
+				AB0000000000000000000106 /* AppServices.swift in Sources */,
+				AB0000000000000000000107 /* ImageStorageService.swift in Sources */,
+				AB0000000000000000000108 /* OCRService.swift in Sources */,
+				AB0000000000000000000109 /* OneDriveService.swift in Sources */,
+				AB0000000000000000000110 /* RecipeParsingService.swift in Sources */,
+				AB0000000000000000000111 /* RecipeSearchService.swift in Sources */,
+				AB0000000000000000000112 /* ServingScalerService.swift in Sources */,
+				AB0000000000000000000113 /* UnitConversionService.swift in Sources */,
+				AB0000000000000000000114 /* URLRecipeImportService.swift in Sources */,
+				AB0000000000000000000115 /* FractionFormatter.swift in Sources */,
+				AB0000000000000000000116 /* NetworkMonitor.swift in Sources */,
+				AB0000000000000000000117 /* String+RecipeCleanup.swift in Sources */,
+				AB0000000000000000000118 /* AddRecipeViewModel.swift in Sources */,
+				AB0000000000000000000119 /* RecipeDetailViewModel.swift in Sources */,
+				AB0000000000000000000120 /* RecipeLibraryViewModel.swift in Sources */,
+				AB0000000000000000000121 /* AddFromURLView.swift in Sources */,
+				AB0000000000000000000122 /* AddRecipeSheet.swift in Sources */,
+				AB0000000000000000000123 /* CameraCaptureView.swift in Sources */,
+				AB0000000000000000000124 /* AsyncRecipeImageView.swift in Sources */,
+				AB0000000000000000000125 /* IngredientsView.swift in Sources */,
+				AB0000000000000000000126 /* InstructionStepModeView.swift in Sources */,
+				AB0000000000000000000127 /* RecipeDetailView.swift in Sources */,
+				AB0000000000000000000128 /* RecipeCardView.swift in Sources */,
+				AB0000000000000000000129 /* RecipeLibraryView.swift in Sources */,
+				AB0000000000000000000130 /* RecipeListRowView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000011 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AB0000000000000000000301 /* IngredientParsingTests.swift in Sources */,
+				AB0000000000000000000302 /* InstructionStepSplittingTests.swift in Sources */,
+				AB0000000000000000000303 /* ServingScalerTests.swift in Sources */,
+				AB0000000000000000000304 /* UnitConversionTests.swift in Sources */,
+				AB0000000000000000000305 /* URLRecipeExtractionTests.swift in Sources */,
+				AB0000000000000000000306 /* RecipeSearchTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA000000000000000000000E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000004 /* RecipeCookbook */;
+			targetProxy = AA000000000000000000000D /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		AA0000000000000000000031 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+			};
+			name = Debug;
+		};
+		AA0000000000000000000032 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		AA0000000000000000000033 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RecipeCookbook/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.recipecookbook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000034 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = RecipeCookbook/Resources/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.recipecookbook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		AA0000000000000000000035 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.recipecookbook.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RecipeCookbook.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RecipeCookbook";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000036 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.example.recipecookbook.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/RecipeCookbook.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/RecipeCookbook";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		AA0000000000000000000040 /* Build configuration list for PBXProject "RecipeCookbook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000031 /* Debug */,
+				AA0000000000000000000032 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000041 /* Build configuration list for PBXNativeTarget "RecipeCookbook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000033 /* Debug */,
+				AA0000000000000000000034 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000042 /* Build configuration list for PBXNativeTarget "RecipeCookbookTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000035 /* Debug */,
+				AA0000000000000000000036 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = AA0000000000000000000001 /* Project object */;
+}
