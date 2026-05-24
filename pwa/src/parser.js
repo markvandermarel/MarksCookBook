@@ -62,10 +62,10 @@ export function parseRecipeText(text, sourceType = "manual", metadata = {}) {
   if (!lines.length) return emptyRecipe(sourceType, metadata);
 
   const sections = splitSections(lines);
-  const title = detectTitle(lines);
+  const title = cleanTitle(detectExplicitTitle(lines) || detectTitle(lines));
   const originalServings = detectServings(lines) || 4;
   const description = sections.description
-    .filter((line) => line.toLowerCase() !== title.toLowerCase())
+    .filter((line) => line.toLowerCase() !== title.toLowerCase() && !/^title\s*:/i.test(line) && !isServingLine(line))
     .join(" ");
 
   return {
@@ -340,6 +340,11 @@ function splitSections(lines) {
   for (const line of lines) {
     const heading = sectionHeading(line);
 
+    if (heading === "description") {
+      section = "description";
+      continue;
+    }
+
     if (heading === "ingredients") {
       section = "ingredients";
       sawIngredientHeading = true;
@@ -426,6 +431,18 @@ function detectTitle(lines) {
     .sort((a, b) => b.score - a.score);
 
   return scored[0]?.line || "Untitled Recipe";
+}
+
+function detectExplicitTitle(lines) {
+  const inline = lines.find((line) => /^title\s*:\s*\S/i.test(line));
+  if (inline) return inline.replace(/^title\s*:\s*/i, "");
+
+  const index = lines.findIndex((line) => /^title\s*:?\s*$/i.test(line));
+  if (index >= 0) {
+    return lines.slice(index + 1).find((line) => line && !sectionHeading(line)) || "";
+  }
+
+  return "";
 }
 
 function detectServings(lines) {
@@ -811,6 +828,10 @@ function sectionHeading(line) {
     .replace(/[^a-z ]/g, "")
     .replace(/\s+/g, " ")
     .trim();
+
+  if (/^(description|intro|introduction|about|beschreibung|einleitung|omschrijving|inleiding)$/.test(key)) {
+    return "description";
+  }
 
   if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need|zutaten?\b.*|ingrediënten|ingredienten|benodigdheden|wat heb je nodig)$/.test(key)) {
     return "ingredients";

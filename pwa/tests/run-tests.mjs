@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { extractRecipeFromHTML, importRecipeFromURL, parseIngredientLine, parseRecipeText, splitInstructions } from "../src/parser.js";
+import { formatRecipeTextFromOCRData } from "../src/ocr.js";
 import { convertAmount, formatFraction, scaleAmount } from "../src/units.js";
 
 if (!globalThis.crypto?.randomUUID) {
@@ -145,6 +146,34 @@ assert.equal(englishScanParsed.originalServings, 8);
 assert.equal(englishScanParsed.ingredients.length, 7);
 assert.equal(englishScanParsed.instructions.length, 5);
 assert.ok(englishScanParsed.instructions[0].text.includes("day before serving"));
+
+const layoutOCRText = formatRecipeTextFromOCRData({
+  lines: [
+    { text: "VEGAN", bbox: { x0: 20, y0: 18, x1: 92, y1: 34 } },
+    { text: "TOMATO AND WATERMELON GAZPACHO", bbox: { x0: 150, y0: 42, x1: 780, y1: 84 } },
+    { text: "SERVES SIX", bbox: { x0: 20, y0: 112, x1: 128, y1: 130 } },
+    { text: "I first made this during my sun-drenched days in Mallorca.", bbox: { x0: 150, y0: 112, x1: 740, y1: 132 } },
+    { text: "The sweet red tomatoes were the most animated and refreshing soup.", bbox: { x0: 150, y0: 140, x1: 780, y1: 160 } },
+    { text: "2kg tomatoes, blanched and peeled", bbox: { x0: 20, y0: 180, x1: 280, y1: 198 } },
+    { text: "and roughly chopped", bbox: { x0: 20, y0: 206, x1: 190, y1: 224 } },
+    { text: "5 garlic cloves, roughly chopped", bbox: { x0: 20, y0: 232, x1: 288, y1: 250 } },
+    { text: "400g watermelon, deseeded and chopped", bbox: { x0: 20, y0: 258, x1: 326, y1: 276 } },
+    { text: "2 tbsp red wine vinegar", bbox: { x0: 20, y0: 284, x1: 220, y1: 302 } },
+    { text: "Preheat the oven to 200C.", bbox: { x0: 360, y0: 180, x1: 610, y1: 200 } },
+    { text: "Place the bread in a medium bowl along with the oil and vinegar.", bbox: { x0: 360, y0: 214, x1: 820, y1: 234 } },
+    { text: "Place the tomatoes and garlic in a blender and blend until smooth.", bbox: { x0: 360, y0: 248, x1: 820, y1: 268 } },
+    { text: "To serve, pour the soup into individual bowls and top with croutons.", bbox: { x0: 360, y0: 282, x1: 820, y1: 302 } }
+  ]
+});
+const layoutParsed = parseRecipeText(layoutOCRText, "photo");
+assert.equal(layoutParsed.title, "TOMATO AND WATERMELON GAZPACHO");
+assert.ok(!layoutParsed.title.includes("VEGAN"));
+assert.equal(layoutParsed.originalServings, 6);
+assert.equal(layoutParsed.ingredients.length, 4);
+assert.ok(layoutParsed.ingredients[0].originalText.includes("roughly chopped"));
+assert.equal(layoutParsed.instructions.length, 4);
+assert.ok(layoutParsed.description.includes("sun-drenched days"));
+assert.ok(!layoutParsed.description.includes("SERVES"));
 
 assert.equal(scaleAmount(2, 4, 6), 3);
 assert.equal(formatFraction(1.5), "1 1/2");
