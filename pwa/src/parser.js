@@ -366,11 +366,12 @@ function splitSections(lines) {
     }
   }
 
+  sections.ingredients = buildIngredientEntries(sections.ingredients);
   return sections;
 }
 
 function splitScannedSections(lines) {
-  const instructionIndex = lines.findIndex(isNumberedInstructionLine);
+  const instructionIndex = lines.findIndex((line) => isNumberedInstructionLine(line) || looksLikeInstruction(line));
   if (instructionIndex < 0) return null;
 
   const beforeInstructions = lines.slice(0, instructionIndex);
@@ -444,7 +445,48 @@ function detectServings(lines) {
     if (match) return Number(match[1]);
   }
 
+  const wordMatch = text.match(/\b(?:serves?|servings?|voor|für)\s+([a-zäöüß]+)/i);
+  if (wordMatch) return numberWordValue(wordMatch[1]);
+
   return null;
+}
+
+function numberWordValue(word) {
+  const normalized = String(word).toLowerCase();
+  return (
+    {
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      een: 1,
+      twee: 2,
+      drie: 3,
+      vier: 4,
+      vijf: 5,
+      zes: 6,
+      zeven: 7,
+      acht: 8,
+      negen: 9,
+      tien: 10,
+      eins: 1,
+      zwei: 2,
+      drei: 3,
+      funf: 5,
+      fünf: 5,
+      sechs: 6,
+      sieben: 7,
+      acht: 8,
+      neun: 9,
+      zehn: 10
+    }[normalized] || null
+  );
 }
 
 function titleScore(line, index) {
@@ -472,7 +514,11 @@ function titleScore(line, index) {
 }
 
 function isServingLine(line) {
-  return /\b(serves?|servings?|yield|makes|portions?|für|voor)\b.*\d/i.test(line) || /\b\d+\s*(personen|portionen|porties)\b/i.test(line);
+  return (
+    /\b(serves?|servings?|yield|makes|portions?|für|voor)\b.*\d/i.test(line) ||
+    /\b\d+\s*(personen|portionen|porties)\b/i.test(line) ||
+    /\b(serves?|servings?|voor|für)\s+[a-zäöüß]+\b/i.test(line)
+  );
 }
 
 function isScanMetaLine(line) {
@@ -497,7 +543,7 @@ function isIngredientStartLine(line) {
 function isNoAmountIngredientLine(line) {
   return (
     line.length <= 48 &&
-    /^(?:salt|pepper|salt and pepper|salz|pfeffer|salz und schwarzer pfeffer|zout|peper|zout en peper)\b/i.test(line)
+    /^(?:salt|pepper|salt and pepper|salz|pfeffer|salz und schwarzer pfeffer|zout|peper|zout en peper|grated zest|zest of|juice of)\b/i.test(line)
   );
 }
 
@@ -524,6 +570,44 @@ function isDescriptionLine(line) {
   return normalized.length > 18;
 }
 
+function buildIngredientEntries(lines) {
+  const entries = [];
+  let current = "";
+
+  const flush = () => {
+    if (current) {
+      entries.push(current);
+      current = "";
+    }
+  };
+
+  for (const line of lines) {
+    const normalized = normalizeLine(line);
+    if (!normalized || skipIngredientListLine(normalized)) {
+      flush();
+      continue;
+    }
+
+    if (isIngredientStartLine(normalized)) {
+      flush();
+      current = normalized;
+      continue;
+    }
+
+    if (current && isIngredientContinuationLine(normalized)) {
+      current = `${current} ${normalized}`;
+    }
+  }
+
+  flush();
+  return entries.length ? entries : lines;
+}
+
+function skipIngredientListLine(line) {
+  if (sectionHeading(line) || isServingLine(line) || isNumberedInstructionLine(line)) return true;
+  return titleScore(line, 0) >= 18 && !isNoAmountIngredientLine(line);
+}
+
 function looksLikeIngredient(line) {
   const tokens = normalizeLine(line).split(" ").filter(Boolean);
   if (!tokens.length) return false;
@@ -532,7 +616,7 @@ function looksLikeIngredient(line) {
 }
 
 function looksLikeInstruction(line) {
-  return /^(?:(?:step|schritt|stap)\s*)?(?:\d+[.)]?\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack|remove|cover|transfer|fold|erhitzen|geben|mischen|braten|kochen|köcheln|hinzufügen|servieren|schneiden|hacken|unterrühren|umrühren|anrichten|verwarm|meng|voeg|bak|kook|laat|snijd|hak|serveer|doe|giet|roer)\b/i.test(line);
+  return /^(?:(?:step|schritt|stap)\s*)?(?:\d+[.)]?\s+)?(preheat|heat|mix|stir|combine|bake|cook|bring|add|whisk|pour|season|serve|place|drain|garnish|toss|cut|soak|prep|while|next|move|crack|remove|cover|transfer|fold|put|the day before|to make|to assemble|erhitzen|geben|mischen|braten|kochen|köcheln|hinzufügen|servieren|schneiden|hacken|unterrühren|umrühren|anrichten|verwarm|meng|voeg|bak|kook|laat|snijd|hak|serveer|doe|giet|roer)\b/i.test(line);
 }
 
 function parseLeadingQuantity(tokens) {
@@ -728,11 +812,11 @@ function sectionHeading(line) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need|zutaten?|ingrediënten|ingredienten|benodigdheden|wat heb je nodig)$/.test(key)) {
+  if (ingredientHeadings.has(key) || /^(ingredients?|ingredient list|ingredlents?|you will need|what you need|zutaten?\b.*|ingrediënten|ingredienten|benodigdheden|wat heb je nodig)$/.test(key)) {
     return "ingredients";
   }
 
-  if (instructionHeadings.has(key) || /^(instructions?|directions?|method|preparation|steps|cooking method|zubereitung|anleitung|methode|bereiding|werkwijze|stappen)$/.test(key)) {
+  if (instructionHeadings.has(key) || /^(instructions?|directions?|method|preparation|steps|cooking method|zubereitung\b.*|anleitung\b.*|methode|bereiding|werkwijze|stappen)$/.test(key)) {
     return "instructions";
   }
 

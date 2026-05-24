@@ -66,7 +66,10 @@ export async function uploadBlobToOneDrive(blob, fileName) {
     }
   );
 
-  if (!response.ok) throw new Error("OneDrive upload failed.");
+  if (!response.ok) {
+    const detail = await graphErrorMessage(response);
+    throw new Error(detail || "OneDrive upload failed.");
+  }
   const item = await response.json();
   return {
     itemId: item.id,
@@ -79,7 +82,36 @@ async function getValidToken() {
   const token = await getSetting(TOKEN_SETTING);
   if (!token?.access_token) return null;
   if (token.expires_at && token.expires_at > Date.now() + 60_000) return token;
+  if (token.refresh_token) {
+    try {
+      const refreshed = await refreshToken(token.refresh_token);
+      await setSetting(TOKEN_SETTING, refreshed);
+      return refreshed;
+    } catch {
+      await setSetting(TOKEN_SETTING, null);
+      return null;
+    }
+  }
   return null;
+}
+
+async function refreshToken(refreshTokenValue) {
+  const body = new URLSearchParams({
+    client_id: appConfig.microsoftClientId,
+    scope: appConfig.graphScopes.join(" "),
+    refresh_token: refreshTokenValue,
+    grant_type: "refresh_token"
+  });
+
+  const response = await fetch(`https://login.microsoftonline.com/${appConfig.microsoftTenant}/oauth2/v2.0/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body
+  });
+
+  if (!response.ok) throw new Error("Microsoft sign-in expired.");
+  const token = await response.json();
+  return { ...token, refresh_token: token.refresh_token || refreshTokenValue, expires_at: Date.now() + token.expires_in * 1000 };
 }
 
 async function exchangeCodeForToken(code, verifier) {
@@ -102,6 +134,15 @@ async function exchangeCodeForToken(code, verifier) {
   if (!response.ok) throw new Error("Microsoft sign-in failed.");
   const token = await response.json();
   return { ...token, expires_at: Date.now() + token.expires_in * 1000 };
+}
+
+async function graphErrorMessage(response) {
+  try {
+    const payload = await response.json();
+    return payload?.error?.message ? `OneDrive upload failed: ${payload.error.message}` : "";
+  } catch {
+    return "";
+  }
 }
 
 function randomString(length) {

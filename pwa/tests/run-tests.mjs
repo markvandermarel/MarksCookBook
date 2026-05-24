@@ -124,6 +124,28 @@ assert.equal(dutchParsed.ingredients.length, 3);
 assert.equal(dutchParsed.ingredients[1].unit, "tablespoon");
 assert.equal(dutchParsed.instructions.length, 3);
 
+const englishScanParsed = parseRecipeText(`
+SET CHEESECAKE WITH PLUM COMPOTE
+SERVES EIGHT
+400g cream cheese
+200g mascarpone
+125g caster sugar
+200ml double cream
+grated zest of 1 lemon
+2 tbsp olive oil
+500g plums, stoned and cut into small cubes
+The day before serving, place the cream cheese, mascarpone and sugar in the bowl of an electric mixer.
+Put the oil and orange rind in a small saucepan and place on a medium heat.
+Preheat the oven to 190C.
+To make the crumble, place the flour, sugar, butter and salt in a small bowl.
+To assemble, spoon the cream mix on to individual plates.
+`);
+assert.equal(englishScanParsed.title, "SET CHEESECAKE WITH PLUM COMPOTE");
+assert.equal(englishScanParsed.originalServings, 8);
+assert.equal(englishScanParsed.ingredients.length, 7);
+assert.equal(englishScanParsed.instructions.length, 5);
+assert.ok(englishScanParsed.instructions[0].text.includes("day before serving"));
+
 assert.equal(scaleAmount(2, 4, 6), 3);
 assert.equal(formatFraction(1.5), "1 1/2");
 const poundToMetric = convertAmount(1, "pound", "metric");

@@ -21,6 +21,8 @@ const state = {
   stepIndex: 0,
   importMode: "text",
   selectedPhotoBlob: null,
+  isOcrRunning: false,
+  isImportSaving: false,
   objectURLs: new Set(),
   account: { signedIn: false, label: "OneDrive" }
 };
@@ -104,6 +106,8 @@ function bindEvents() {
     elements.photoPreview.src = URL.createObjectURL(file);
     elements.photoPreview.classList.remove("hidden");
     elements.ocrStatus.textContent = "Preparing OCR...";
+    state.isOcrRunning = true;
+    updateImportButtonState();
 
     try {
       const text = await recognizeRecipeTextFromImage(file, (message) => {
@@ -114,6 +118,9 @@ function bindEvents() {
     } catch (error) {
       elements.ocrStatus.textContent = error.message || "OCR failed. You can paste the recipe text manually.";
       toast(elements.ocrStatus.textContent);
+    } finally {
+      state.isOcrRunning = false;
+      updateImportButtonState();
     }
   });
 }
@@ -132,16 +139,25 @@ function openImportDialog(mode) {
   elements.photoInput.value = "";
   elements.urlInput.value = "";
   elements.recipeTextInput.value = "";
+  state.isOcrRunning = false;
+  state.isImportSaving = false;
+  updateImportButtonState();
   elements.importDialog.showModal();
 }
 
 async function parseAndSaveImport() {
+  if (state.isOcrRunning) {
+    toast("Please wait until photo text extraction finishes.");
+    return;
+  }
+
   const sourceText = elements.recipeTextInput.value.trim();
   const urlText = elements.urlInput.value.trim();
   let recipe;
 
   try {
-    elements.parseRecipeButton.disabled = true;
+    state.isImportSaving = true;
+    updateImportButtonState();
 
     if (state.importMode === "url" && urlText) {
       try {
@@ -171,13 +187,15 @@ async function parseAndSaveImport() {
     const savedRecipe = await saveRecipe(recipe);
     state.selectedId = savedRecipe.id;
     elements.importDialog.close();
+    await reloadRecipes();
     await syncPendingUploads({ silent: true });
     await reloadRecipes();
     toast("Recipe saved.");
   } catch (error) {
     toast(error.message || "The recipe could not be imported.");
   } finally {
-    elements.parseRecipeButton.disabled = false;
+    state.isImportSaving = false;
+    updateImportButtonState();
   }
 }
 
@@ -191,6 +209,11 @@ function validateImportedRecipe(recipe, mode) {
         ? "No ingredients or instructions were found. The site may block imports; paste the page text or HTML into the box."
         : "No ingredients or instructions were found. Check the recipe text and try again.";
   throw new Error(guidance);
+}
+
+function updateImportButtonState() {
+  elements.parseRecipeButton.disabled = state.isOcrRunning || state.isImportSaving;
+  elements.parseRecipeButton.textContent = state.isOcrRunning ? "Reading Photo..." : state.isImportSaving ? "Saving..." : "Parse and Save";
 }
 
 async function reloadRecipes() {
@@ -390,6 +413,7 @@ function bindDetailEvents(recipe) {
       syncStatus: "pendingUpload"
     });
     await saveRecipe(recipe);
+    await reloadRecipes();
     await syncPendingUploads({ silent: true });
     await reloadRecipes();
     toast("Dish photo saved.");
@@ -416,6 +440,8 @@ function bindDetailEvents(recipe) {
     if (!confirm(`Delete "${recipe.title}"?`)) return;
     await deleteRecipe(recipe.id);
     state.selectedId = "";
+    state.stepIndex = 0;
+    elements.detailPane.classList.remove("open");
     await reloadRecipes();
     toast("Recipe deleted.");
   });
@@ -527,7 +553,10 @@ function renderIngredientDialog() {
 function filteredRecipes() {
   const query = state.search.trim().toLowerCase();
   return state.recipes.filter((recipe) => {
-    const ingredientNames = recipe.ingredients.map((ingredient) => ingredient.name.toLowerCase());
+    const ingredientNames = recipe.ingredients.flatMap((ingredient) => [
+      ingredient.name.toLowerCase(),
+      ingredientFilterName(ingredient).toLowerCase()
+    ]);
     const matchesQuery =
       !query || recipe.title.toLowerCase().includes(query) || ingredientNames.some((ingredient) => ingredient.includes(query));
 
@@ -547,10 +576,54 @@ function allIngredientNames() {
     ...new Set(
       state.recipes
         .flatMap((recipe) => recipe.ingredients)
-        .map((ingredient) => ingredient.name.trim())
+        .map(ingredientFilterName)
         .filter(Boolean)
     )
   ].sort((a, b) => a.localeCompare(b));
+}
+
+function ingredientFilterName(ingredient) {
+  const raw = ingredient.name || ingredient.originalText || "";
+  let name = raw
+    .replace(/\([^)]*\)/g, " ")
+    .replace(/[,;].*$/g, " ")
+    .replace(
+      /\b(?:whisked|beaten|roasted|coarsely chopped|finely chopped|roughly chopped|chopped|diced|minced|sliced|grated|peeled|crushed|melted|softened|baked|zested|juiced|cut into\b.*|in wedges\b.*|into wedges\b.*|grob gehackt|fein gehackt|grob gewürfelt|geschnitten|gehobelt|zerstoßen|trocken getupft|fijngehakt|grof gehakt|gesneden|in blokjes|geplet)\b.*$/i,
+      " "
+    )
+    .replace(/\b(?:fresh|extra firm|firm|large|small|medium|ripe|whole|ground|black|white|red|yellow|green)\b/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!name) name = raw.trim();
+  name = singularIngredientName(name);
+  return name ? titleCase(name) : "";
+}
+
+function singularIngredientName(name) {
+  const irregular = {
+    eggs: "egg",
+    tomatoes: "tomato",
+    potatoes: "potato",
+    limes: "lime",
+    lemons: "lemon",
+    leaves: "leaf",
+    loaves: "loaf"
+  };
+  const lower = name.toLowerCase();
+  if (irregular[lower]) return irregular[lower];
+  if (lower.endsWith("ies") && lower.length > 4) return `${name.slice(0, -3)}y`;
+  if (lower.endsWith("es") && lower.length > 4 && !/(ses|ches|shes)$/.test(lower)) return name.slice(0, -2);
+  if (lower.endsWith("s") && lower.length > 3 && !/(ss|us)$/.test(lower)) return name.slice(0, -1);
+  return name;
+}
+
+function titleCase(value) {
+  return value
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+    .join(" ");
 }
 
 function selectedRecipe() {
@@ -593,6 +666,8 @@ async function syncPendingUploads({ silent } = { silent: false }) {
   }
 
   let synced = 0;
+  let failed = 0;
+  let lastError = "";
   for (const recipe of state.recipes) {
     let changed = false;
     for (const image of recipe.images) {
@@ -608,8 +683,10 @@ async function syncPendingUploads({ silent } = { silent: false }) {
         image.syncStatus = "uploaded";
         changed = true;
         synced += 1;
-      } catch {
+      } catch (error) {
         image.syncStatus = "pendingUpload";
+        failed += 1;
+        lastError = error.message || "OneDrive upload failed.";
       }
     }
     if (changed) await saveRecipe(recipe);
@@ -618,6 +695,8 @@ async function syncPendingUploads({ silent } = { silent: false }) {
   if (synced) {
     await reloadRecipes();
     if (!silent) toast(`Synced ${synced} image${synced === 1 ? "" : "s"} to OneDrive.`);
+  } else if (failed && !silent) {
+    toast(lastError || `OneDrive sync failed for ${failed} image${failed === 1 ? "" : "s"}.`);
   } else if (!silent) {
     toast("No pending uploads synced.");
   }
