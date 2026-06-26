@@ -7,7 +7,7 @@ const PHOTO_JPEG_QUALITY = 0.82;
 const PHOTO_IMPORT_LOG_PREFIX = "[Recipe Cookbook photo import]";
 
 export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
-  const endpoint = appConfig.aiExtractionEndpoint.trim();
+  const endpoint = String(appConfig.aiExtractionEndpoint || "").trim();
   logPhotoImport("extractRecipeFromPhoto called", {
     endpointConfigured: Boolean(endpoint),
     fileName: file?.name || "",
@@ -17,17 +17,17 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
 
   if (!endpoint) {
     logPhotoImport("blocked before API call", { reason: "missing aiExtractionEndpoint" });
-    throw new Error("Photo extraction is not configured. Add your deployed AI extraction endpoint in pwa/src/config.js.");
+    throw new Error("Photo extraction endpoint is missing. Add a backend endpoint URL in pwa/src/config.js; keep AI API keys on the backend only.");
   }
 
-  onProgress("Preparing photo for AI extraction...");
+  onProgress("Preparing photo for secure extraction...");
   const imageDataUrl = await imageFileToJpegDataURL(file);
   logPhotoImport("photo prepared for upload", {
     jpegDataUrlLength: imageDataUrl.length,
     maxDimension: PHOTO_MAX_DIMENSION
   });
 
-  onProgress("Extracting recipe with AI...");
+  onProgress("Sending photo to the extraction backend...");
   logPhotoImport("sending extraction request", { endpoint: safeEndpointLabel(endpoint) });
   let response;
   try {
@@ -45,7 +45,9 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
       endpoint: safeEndpointLabel(endpoint),
       message: error.message || String(error)
     });
-    throw new Error(`Could not reach the photo extraction endpoint: ${error.message || "network request failed"}`);
+    throw new Error(
+      `Could not reach the photo extraction backend at ${safeEndpointLabel(endpoint)}. Start the local dev server or check the deployed endpoint URL.`
+    );
   }
 
   logPhotoImport("extraction response received", {
@@ -60,7 +62,7 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
       status: response.status,
       message: payload.error || "Photo recipe extraction failed."
     });
-    throw new Error(payload.error || "Photo recipe extraction failed.");
+    throw new Error(payload.error || backendFailureMessage(response.status, endpoint));
   }
 
   if (!payload.recipe) {
@@ -68,14 +70,16 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
     throw new Error("The extraction service did not return recipe JSON.");
   }
 
-  onProgress("Recipe extracted. Review the JSON, then save.");
+  const isMock = payload.mock || payload.provider?.mode === "mock";
+  onProgress(isMock ? "Mock recipe extracted. Review the JSON before saving." : "Recipe extracted. Review the JSON, then save.");
   logPhotoImport("recipe extracted", {
+    provider: payload.provider || null,
     title: payload.recipe.title || "",
     ingredientCount: Array.isArray(payload.recipe.ingredients) ? payload.recipe.ingredients.length : 0,
     instructionCount: Array.isArray(payload.recipe.instructions) ? payload.recipe.instructions.length : 0
   });
   return recipeFromExtractedRecipe(payload.recipe, "photo", {
-    sourceName: "AI photo extraction",
+    sourceName: isMock ? "Mock photo extraction" : "AI photo extraction",
     fullText: payload.recipe.fullText || "",
     language: payload.recipe.language || "unknown",
     confidence: Number(payload.recipe.confidence) || 0,
@@ -226,4 +230,15 @@ function safeEndpointLabel(endpoint) {
   } catch {
     return "configured endpoint";
   }
+}
+
+function backendFailureMessage(status, endpoint) {
+  const label = safeEndpointLabel(endpoint);
+  if (status === 404) {
+    return `Photo extraction backend was not found at ${label}. If the PWA is on a static host, deploy the backend separately and update pwa/src/config.js.`;
+  }
+  if (status === 503) {
+    return "Photo extraction backend is unavailable. Check that the backend is running and its AI provider environment variables are configured.";
+  }
+  return `Photo extraction backend returned HTTP ${status}. Check the backend logs for details.`;
 }

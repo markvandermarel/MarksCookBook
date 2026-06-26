@@ -26,6 +26,30 @@ Open:
 http://localhost:8080
 ```
 
+`npm start` serves both the static PWA and the local extraction backend:
+
+```text
+http://localhost:8080/api/extract-recipe
+```
+
+No AI key is required for a local smoke test. If `OPENAI_API_KEY` is not configured, the local backend returns a clearly marked mock recipe so you can test the photo review and save flow without sending the image to a provider.
+
+For real local extraction, copy the example env file and add your backend-only key:
+
+```bash
+cp .env.local.example .env.local
+```
+
+Then edit `.env.local`:
+
+```text
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.4-mini
+ALLOWED_ORIGIN=http://localhost:8080,http://127.0.0.1:8080
+```
+
+Never put `OPENAI_API_KEY` or any AI/OCR provider secret in `pwa/src/config.js` or any frontend file.
+
 For iPhone installation and offline service-worker support, deploy the `pwa/` folder to an HTTPS host such as GitHub Pages, Cloudflare Pages, Netlify, or your own HTTPS server. Service workers do not reliably install from plain HTTP on an iPhone except for localhost.
 
 ## Install on iPhone or iPad
@@ -58,7 +82,27 @@ After deploying an update, open the HTTPS URL in Safari once before launching fr
 
 ## Photo Extraction Setup
 
-Photo imports use a small backend endpoint so your OpenAI API key is never exposed in the browser. The selected photo is compressed in the browser, sent to the backend for extraction, and then discarded. The PWA saves only the structured recipe JSON.
+Photo imports use a small backend endpoint so your AI/OCR provider key is never exposed in the browser. The selected photo is compressed in the browser, sent to the backend for extraction, and then discarded by the PWA. The backend returns structured recipe JSON, the app places that JSON in the import dialog for review, and the recipe is saved only after you choose **Save Recipe**.
+
+Current request flow:
+
+```text
+Browser PWA -> POST /api/extract-recipe -> backend reads OPENAI_API_KEY -> AI/OCR provider -> structured recipe JSON -> browser review step
+```
+
+The frontend configuration contains only an endpoint URL:
+
+```text
+pwa/src/config.js
+```
+
+```javascript
+export const appConfig = {
+  aiExtractionEndpoint: "/api/extract-recipe"
+}
+```
+
+For local development, that default route is served by `npm start`.
 
 The backend template is:
 
@@ -66,7 +110,7 @@ The backend template is:
 api/extract-recipe.js
 ```
 
-Deploy that endpoint to a serverless host such as Vercel, Netlify Functions, Cloudflare Workers, or Azure Functions. The included file is shaped for a Vercel-style Node function.
+Deploy that endpoint to a serverless host such as Vercel, Netlify Functions, Azure Functions, or another Node-compatible API host. The included file is shaped for a Vercel-style Node function.
 
 Set these environment variables on the backend:
 
@@ -76,9 +120,9 @@ OPENAI_MODEL=gpt-5.4-mini
 ALLOWED_ORIGIN=https://your-github-user.github.io
 ```
 
-`ALLOWED_ORIGIN` is optional for local experiments, but recommended once deployed.
+`ALLOWED_ORIGIN` is optional for local experiments, but recommended once deployed. Multiple origins can be comma-separated.
 
-Then put the deployed endpoint URL in:
+If your PWA is deployed separately from the backend, such as GitHub Pages plus Vercel, put the deployed backend URL in:
 
 ```text
 pwa/src/config.js
@@ -90,12 +134,25 @@ export const appConfig = {
 }
 ```
 
-For GitHub Pages, the PWA and backend are separate deployments:
+For same-origin deployments, keep the default `/api/extract-recipe`. For GitHub Pages, the PWA and backend are separate deployments:
 
 ```text
 GitHub Pages: static PWA files in /pwa
 Vercel or similar: /api/extract-recipe.js
 ```
+
+### Mock Extraction
+
+The backend supports mock extraction for local testing. When `npm start` is running on localhost and `OPENAI_API_KEY` is missing, `/api/extract-recipe` returns a mock recipe with warnings and `provider.mode = "mock"`.
+
+You can also control mock mode explicitly:
+
+```text
+MOCK_RECIPE_EXTRACTION=true   # force mock responses
+MOCK_RECIPE_EXTRACTION=false  # disable implicit localhost mock mode
+```
+
+If a deployed backend is missing `OPENAI_API_KEY`, it returns a helpful error instead of exposing any secret or failing silently.
 
 Photo extraction supports English, German, and Dutch recipe pages. The model returns:
 

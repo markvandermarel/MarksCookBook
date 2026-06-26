@@ -1,4 +1,4 @@
-const CACHE_NAME = "recipe-cookbook-pwa-v9";
+const CACHE_NAME = "recipe-cookbook-pwa-v10";
 
 const APP_SHELL = [
   "./",

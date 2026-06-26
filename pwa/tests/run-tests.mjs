@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import extractRecipeHandler from "../../api/extract-recipe.js";
 import { recipeFromExtractedRecipe } from "../src/aiRecipe.js";
 import { extractRecipeFromHTML, importRecipeFromURL, parseIngredientLine, parseRecipeText, splitInstructions } from "../src/parser.js";
 import { convertAmount, formatFraction, scaleAmount } from "../src/units.js";
@@ -271,4 +272,99 @@ try {
   globalThis.fetch = originalFetch;
 }
 
+await withTemporaryEnv(
+  {
+    ALLOWED_ORIGIN: "",
+    MOCK_RECIPE_EXTRACTION: "",
+    OPENAI_API_KEY: ""
+  },
+  async () => {
+    const response = await callExtractionAPI({
+      headers: {
+        host: "localhost:8080",
+        origin: "http://localhost:8080"
+      },
+      body: {
+        imageDataUrl: "data:image/jpeg;base64,abcd",
+        fileName: "local-test.jpg",
+        mimeType: "image/jpeg"
+      }
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.payload.mock, true);
+    assert.equal(response.payload.provider.mode, "mock");
+    assert.equal(response.payload.recipe.title, "Mock Lemon Pasta");
+  }
+);
+
+await withTemporaryEnv(
+  {
+    ALLOWED_ORIGIN: "",
+    MOCK_RECIPE_EXTRACTION: "false",
+    OPENAI_API_KEY: ""
+  },
+  async () => {
+    const response = await callExtractionAPI({
+      headers: {
+        host: "example.com",
+        origin: "https://cookbook.example.com"
+      },
+      body: {
+        imageDataUrl: "data:image/jpeg;base64,abcd",
+        fileName: "missing-key.jpg",
+        mimeType: "image/jpeg"
+      }
+    });
+    assert.equal(response.statusCode, 503);
+    assert.match(response.payload.error, /OPENAI_API_KEY/);
+  }
+);
+
 console.log("PWA parser/unit tests passed.");
+
+async function callExtractionAPI({ method = "POST", headers = {}, body = {} }) {
+  const chunks = [];
+  const response = {
+    statusCode: 200,
+    headers: {},
+    setHeader(name, value) {
+      this.headers[name.toLowerCase()] = value;
+    },
+    end(chunk = "") {
+      chunks.push(String(chunk));
+    }
+  };
+
+  await extractRecipeHandler(
+    {
+      method,
+      headers,
+      body: JSON.stringify(body)
+    },
+    response
+  );
+
+  const text = chunks.join("");
+  return {
+    statusCode: response.statusCode,
+    headers: response.headers,
+    payload: text ? JSON.parse(text) : {}
+  };
+}
+
+async function withTemporaryEnv(values, callback) {
+  const previous = new Map();
+  for (const [key, value] of Object.entries(values)) {
+    previous.set(key, process.env[key]);
+    process.env[key] = value;
+  }
+
+  try {
+    await callback();
+  } finally {
+    for (const [key, value] of previous.entries()) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  }
+}

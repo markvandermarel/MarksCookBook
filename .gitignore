@@ -2,6 +2,10 @@ DerivedData/
 build/
 node_modules/
 npm-debug.log*
+.env
+.env.*
+!.env.example
+!.env.local.example
 *.xcuserdata/
 *.xcuserstate
 .DS_Store

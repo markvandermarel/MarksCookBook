@@ -127,7 +127,7 @@ function openImportDialog(mode) {
   elements.urlImportFields.classList.toggle("hidden", mode !== "url");
   elements.photoPreview.classList.add("hidden");
   elements.photoPreview.removeAttribute("src");
-  elements.photoStatus.textContent = "After you choose a photo, the app sends it to the configured AI extraction service. The photo is not stored.";
+  elements.photoStatus.textContent = "After you choose a photo, the app sends it to the secure extraction backend. The photo is not stored by the PWA.";
   elements.photoInput.value = "";
   state.pendingPhotoFile = null;
   elements.urlInput.value = "";

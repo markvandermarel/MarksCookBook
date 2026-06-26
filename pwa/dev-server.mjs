@@ -1,8 +1,12 @@
 import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
-import { extname, join, normalize } from "node:path";
+import { extname, join, resolve, sep } from "node:path";
+import extractRecipeHandler from "../api/extract-recipe.js";
 
-const root = join(process.cwd(), "pwa");
+const projectRoot = process.cwd();
+await loadLocalEnv(join(projectRoot, ".env.local"));
+
+const root = resolve(projectRoot, "pwa");
 const port = Number(process.env.PORT || 8080);
 
 const mimeTypes = {
@@ -18,10 +22,16 @@ const mimeTypes = {
 createServer(async (request, response) => {
   try {
     const url = new URL(request.url || "/", `http://${request.headers.host}`);
-    const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
-    const filePath = normalize(join(root, requestedPath));
 
-    if (!filePath.startsWith(root)) {
+    if (url.pathname === "/api/extract-recipe") {
+      await extractRecipeHandler(request, response);
+      return;
+    }
+
+    const requestedPath = url.pathname === "/" ? "/index.html" : decodeURIComponent(url.pathname);
+    const filePath = resolve(root, `.${requestedPath}`);
+
+    if (filePath !== root && !filePath.startsWith(root + sep)) {
       response.writeHead(403);
       response.end("Forbidden");
       return;
@@ -39,4 +49,38 @@ createServer(async (request, response) => {
   }
 }).listen(port, () => {
   console.log(`Recipe Cookbook PWA: http://localhost:${port}`);
+  console.log(`Recipe extraction API: http://localhost:${port}/api/extract-recipe`);
+  if (!process.env.OPENAI_API_KEY) {
+    console.log("Recipe extraction mode: local mock (set OPENAI_API_KEY in .env.local to call the provider)");
+  }
 });
+
+async function loadLocalEnv(filePath) {
+  let text = "";
+  try {
+    text = await readFile(filePath, "utf8");
+  } catch (error) {
+    if (error?.code === "ENOENT") return;
+    throw error;
+  }
+
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith("#")) continue;
+
+    const separatorIndex = line.indexOf("=");
+    if (separatorIndex <= 0) continue;
+
+    const key = line.slice(0, separatorIndex).trim();
+    const value = stripOptionalQuotes(line.slice(separatorIndex + 1).trim());
+    if (key && process.env[key] === undefined) process.env[key] = value;
+  }
+}
+
+function stripOptionalQuotes(value) {
+  const quote = value[0];
+  if ((quote === '"' || quote === "'") && value.endsWith(quote)) {
+    return value.slice(1, -1);
+  }
+  return value;
+}
