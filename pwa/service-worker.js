@@ -1,4 +1,4 @@
-const CACHE_NAME = "recipe-cookbook-pwa-v10";
+const CACHE_NAME = "recipe-cookbook-pwa-v12";
 
 const APP_SHELL = [
   "./",
@@ -6,12 +6,12 @@ const APP_SHELL = [
   "./styles.css",
   "./manifest.webmanifest",
   "./assets/icon.svg",
-  "./src/app.js",
-  "./src/aiRecipe.js",
-  "./src/config.js",
-  "./src/db.js",
-  "./src/parser.js",
-  "./src/units.js"
+  "./src/app.js?v=20260626-extraction2",
+  "./src/aiRecipe.js?v=20260626-extraction2",
+  "./src/config.js?v=20260626-extraction2",
+  "./src/db.js?v=20260626-extraction2",
+  "./src/parser.js?v=20260626-extraction2",
+  "./src/units.js?v=20260626-extraction2"
 ];
 
 self.addEventListener("install", (event) => {
@@ -39,6 +39,11 @@ self.addEventListener("fetch", (event) => {
 
   if (requestURL.origin !== self.location.origin) return;
 
+  if (isAppCodeRequest(request, requestURL)) {
+    event.respondWith(networkFirst(request));
+    return;
+  }
+
   event.respondWith(
     caches.match(request).then((cached) => {
       if (cached) return cached;
@@ -57,3 +62,25 @@ self.addEventListener("fetch", (event) => {
     })
   );
 });
+
+function isAppCodeRequest(request, requestURL) {
+  if (request.mode === "navigate") return true;
+  return /\.(?:html|css|js|mjs|json|webmanifest)$/i.test(requestURL.pathname);
+}
+
+async function networkFirst(request) {
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response.ok) {
+      const copy = response.clone();
+      const cache = await caches.open(CACHE_NAME);
+      await cache.put(request, copy);
+    }
+    return response;
+  } catch {
+    const cached = await caches.match(request);
+    if (cached) return cached;
+    if (request.mode === "navigate") return caches.match("./index.html");
+    return Response.error();
+  }
+}

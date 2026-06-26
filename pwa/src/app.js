@@ -1,7 +1,7 @@
-import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js";
-import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js";
-import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js";
-import { formatIngredient } from "./units.js";
+import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260626-extraction2";
+import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260626-extraction2";
+import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260626-extraction2";
+import { formatIngredient } from "./units.js?v=20260626-extraction2";
 
 const state = {
   recipes: [],
@@ -838,6 +838,16 @@ function escapeHTML(value) {
 
 function registerServiceWorker() {
   if ("serviceWorker" in navigator) {
-    navigator.serviceWorker.register("./service-worker.js").catch(() => {});
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+
+    navigator.serviceWorker
+      .register("./service-worker.js")
+      .then((registration) => registration.update())
+      .catch(() => {});
   }
 }
