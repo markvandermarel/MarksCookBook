@@ -1,4 +1,5 @@
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
+const LOG_PREFIX = "[recipe-extraction-api]";
 
 const recipeExtractionSchema = {
   type: "object",
@@ -123,6 +124,11 @@ If a field is not visible, use an empty string, empty array, or null. Do not inv
 
 export default async function handler(req, res) {
   setCORS(req, res);
+  console.info(LOG_PREFIX, "request received", {
+    method: req.method,
+    origin: req.headers.origin || "",
+    contentLength: req.headers["content-length"] || ""
+  });
 
   if (req.method === "OPTIONS") {
     res.statusCode = 204;
@@ -150,6 +156,10 @@ export default async function handler(req, res) {
     }
 
     const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+    console.info(LOG_PREFIX, "calling OpenAI responses API", {
+      model,
+      imageDataUrlLength: imageDataUrl.length
+    });
     const response = await fetch(OPENAI_RESPONSES_URL, {
       method: "POST",
       headers: {
@@ -180,6 +190,11 @@ export default async function handler(req, res) {
     });
 
     const payload = await response.json().catch(() => ({}));
+    console.info(LOG_PREFIX, "OpenAI response received", {
+      ok: response.ok,
+      status: response.status,
+      usage: payload.usage || null
+    });
     if (!response.ok) {
       const message = payload?.error?.message || "OpenAI recipe extraction failed.";
       throw new PublicError(message, response.status);
@@ -189,11 +204,20 @@ export default async function handler(req, res) {
     if (!outputText) throw new PublicError("OpenAI did not return recipe JSON.", 502);
 
     const recipe = JSON.parse(outputText);
+    console.info(LOG_PREFIX, "recipe extraction succeeded", {
+      title: recipe.title || "",
+      ingredientCount: Array.isArray(recipe.ingredients) ? recipe.ingredients.length : 0,
+      instructionCount: Array.isArray(recipe.instructions) ? recipe.instructions.length : 0
+    });
     res.statusCode = 200;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ recipe, usage: payload.usage || null }));
   } catch (error) {
     const status = error instanceof PublicError ? error.status : 500;
+    console.error(LOG_PREFIX, "request failed", {
+      status,
+      message: error.message || "Recipe extraction failed."
+    });
     res.statusCode = status;
     res.setHeader("Content-Type", "application/json");
     res.end(JSON.stringify({ error: error.message || "Recipe extraction failed." }));

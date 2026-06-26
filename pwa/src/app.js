@@ -13,6 +13,7 @@ const state = {
   instructionMode: "full",
   stepIndex: 0,
   importMode: "text",
+  pendingPhotoFile: null,
   pendingPhotoRecipe: null,
   isLoading: true,
   loadError: "",
@@ -89,29 +90,29 @@ function bindEvents() {
   elements.photoInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    state.pendingPhotoFile = file;
     state.pendingPhotoRecipe = null;
     const previewURL = URL.createObjectURL(file);
     state.objectURLs.add(previewURL);
     elements.photoPreview.src = previewURL;
     elements.photoPreview.classList.remove("hidden");
-    elements.photoStatus.textContent = "Preparing photo...";
+    elements.photoStatus.textContent = "Photo selected. Starting extraction...";
     elements.recipeTextInput.value = "";
-    state.isPhotoExtracting = true;
-    updateImportButtonState();
+    logPhotoImport("photo selected", {
+      fileName: file.name || "",
+      fileType: file.type || "",
+      fileSize: file.size || 0
+    });
 
     try {
-      const recipe = await extractRecipeFromPhoto(file, (message) => {
-        elements.photoStatus.textContent = message;
-      });
-      state.pendingPhotoRecipe = recipe;
-      elements.recipeTextInput.value = JSON.stringify(recipeToEditableJSON(recipe), null, 2);
+      await extractSelectedPhotoRecipe();
       toast("Recipe extracted. Review the JSON, then save.");
     } catch (error) {
+      console.error("[Recipe Cookbook photo import] extraction failed", {
+        message: error.message || String(error)
+      });
       elements.photoStatus.textContent = error.message || "Photo extraction failed.";
       toast(elements.photoStatus.textContent);
-    } finally {
-      state.isPhotoExtracting = false;
-      updateImportButtonState();
     }
   });
 }
@@ -128,6 +129,7 @@ function openImportDialog(mode) {
   elements.photoPreview.removeAttribute("src");
   elements.photoStatus.textContent = "After you choose a photo, the app sends it to the configured AI extraction service. The photo is not stored.";
   elements.photoInput.value = "";
+  state.pendingPhotoFile = null;
   elements.urlInput.value = "";
   elements.recipeTextInput.value = "";
   state.isPhotoExtracting = false;
@@ -142,7 +144,7 @@ async function parseAndSaveImport() {
     return;
   }
 
-  const sourceText = elements.recipeTextInput.value.trim();
+  let sourceText = elements.recipeTextInput.value.trim();
   const urlText = elements.urlInput.value.trim();
   let recipe;
 
@@ -151,6 +153,12 @@ async function parseAndSaveImport() {
     updateImportButtonState();
 
     if (state.importMode === "photo") {
+      if (!sourceText && !state.pendingPhotoRecipe && state.pendingPhotoFile) {
+        logPhotoImport("save clicked before extracted JSON was available; extracting selected photo now");
+        await extractSelectedPhotoRecipe();
+        sourceText = elements.recipeTextInput.value.trim();
+      }
+
       recipe = recipeFromPhotoJSON(sourceText, state.pendingPhotoRecipe);
     } else if (state.importMode === "url" && urlText) {
       try {
@@ -165,12 +173,23 @@ async function parseAndSaveImport() {
 
     validateImportedRecipe(recipe, state.importMode);
 
+    logPhotoImport("saving imported recipe", {
+      mode: state.importMode,
+      title: recipe.title,
+      ingredientCount: recipe.ingredients.length,
+      instructionCount: recipe.instructions.length
+    });
     const savedRecipe = await saveRecipe(recipe);
     state.selectedId = savedRecipe.id;
     elements.importDialog.close();
     await reloadRecipes();
+    logPhotoImport("recipe saved", { recipeId: savedRecipe.id, title: savedRecipe.title });
     toast("Recipe saved.");
   } catch (error) {
+    console.error("[Recipe Cookbook import] save failed", {
+      mode: state.importMode,
+      message: error.message || String(error)
+    });
     toast(error.message || "The recipe could not be imported.");
   } finally {
     state.isImportSaving = false;
@@ -206,9 +225,45 @@ function recipeFromPhotoJSON(sourceText, pendingRecipe) {
   }
 }
 
+async function extractSelectedPhotoRecipe() {
+  if (!state.pendingPhotoFile) {
+    throw new Error("Choose a photo before saving.");
+  }
+
+  state.isPhotoExtracting = true;
+  updateImportButtonState();
+
+  try {
+    const recipe = await extractRecipeFromPhoto(state.pendingPhotoFile, (message) => {
+      elements.photoStatus.textContent = message;
+      logPhotoImport("progress", { message });
+    });
+    state.pendingPhotoRecipe = recipe;
+    elements.recipeTextInput.value = JSON.stringify(recipeToEditableJSON(recipe), null, 2);
+    elements.photoStatus.textContent = "Recipe extracted. Review the JSON, then save.";
+    logPhotoImport("extracted JSON ready for review", {
+      title: recipe.title,
+      ingredientCount: recipe.ingredients.length,
+      instructionCount: recipe.instructions.length
+    });
+    return recipe;
+  } finally {
+    state.isPhotoExtracting = false;
+    updateImportButtonState();
+  }
+}
+
 function updateImportButtonState() {
   elements.parseRecipeButton.disabled = state.isPhotoExtracting || state.isImportSaving;
-  elements.parseRecipeButton.textContent = state.isPhotoExtracting ? "Extracting..." : state.isImportSaving ? "Saving..." : "Save Recipe";
+  const hasPhotoRecipe = Boolean(state.pendingPhotoRecipe || elements.recipeTextInput.value.trim());
+  elements.parseRecipeButton.textContent =
+    state.isPhotoExtracting
+      ? "Extracting..."
+      : state.isImportSaving
+        ? "Saving..."
+        : state.importMode === "photo" && state.pendingPhotoFile && !hasPhotoRecipe
+          ? "Extract Recipe"
+          : "Save Recipe";
 }
 
 async function reloadRecipes() {
@@ -759,6 +814,10 @@ function displayImageType(type) {
 
 function sourceLabel(sourceType) {
   return { url: "Website", photo: "Photo", text: "Text" }[sourceType] || "Recipe";
+}
+
+function logPhotoImport(message, details = {}) {
+  console.info("[Recipe Cookbook photo import]", message, details);
 }
 
 function toast(message) {

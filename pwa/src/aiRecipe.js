@@ -4,37 +4,76 @@ import { parseUnit } from "./units.js";
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.82;
+const PHOTO_IMPORT_LOG_PREFIX = "[Recipe Cookbook photo import]";
 
 export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
-  const endpoint = appConfig.aiExtractionEndpoint;
+  const endpoint = appConfig.aiExtractionEndpoint.trim();
+  logPhotoImport("extractRecipeFromPhoto called", {
+    endpointConfigured: Boolean(endpoint),
+    fileName: file?.name || "",
+    fileType: file?.type || "",
+    fileSize: file?.size || 0
+  });
+
   if (!endpoint) {
-    throw new Error("Photo extraction is not configured. Add your AI extraction endpoint in pwa/src/config.js.");
+    logPhotoImport("blocked before API call", { reason: "missing aiExtractionEndpoint" });
+    throw new Error("Photo extraction is not configured. Add your deployed AI extraction endpoint in pwa/src/config.js.");
   }
 
   onProgress("Preparing photo for AI extraction...");
   const imageDataUrl = await imageFileToJpegDataURL(file);
+  logPhotoImport("photo prepared for upload", {
+    jpegDataUrlLength: imageDataUrl.length,
+    maxDimension: PHOTO_MAX_DIMENSION
+  });
 
   onProgress("Extracting recipe with AI...");
-  const response = await fetch(endpoint, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      imageDataUrl,
-      fileName: file.name || "recipe-photo.jpg",
-      mimeType: "image/jpeg"
-    })
+  logPhotoImport("sending extraction request", { endpoint: safeEndpointLabel(endpoint) });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        imageDataUrl,
+        fileName: file.name || "recipe-photo.jpg",
+        mimeType: "image/jpeg"
+      })
+    });
+  } catch (error) {
+    console.error(PHOTO_IMPORT_LOG_PREFIX, "extraction request failed before response", {
+      endpoint: safeEndpointLabel(endpoint),
+      message: error.message || String(error)
+    });
+    throw new Error(`Could not reach the photo extraction endpoint: ${error.message || "network request failed"}`);
+  }
+
+  logPhotoImport("extraction response received", {
+    endpoint: safeEndpointLabel(endpoint),
+    ok: response.ok,
+    status: response.status
   });
 
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    console.error(PHOTO_IMPORT_LOG_PREFIX, "extraction service returned an error", {
+      status: response.status,
+      message: payload.error || "Photo recipe extraction failed."
+    });
     throw new Error(payload.error || "Photo recipe extraction failed.");
   }
 
   if (!payload.recipe) {
+    console.error(PHOTO_IMPORT_LOG_PREFIX, "extraction service response did not include recipe JSON");
     throw new Error("The extraction service did not return recipe JSON.");
   }
 
   onProgress("Recipe extracted. Review the JSON, then save.");
+  logPhotoImport("recipe extracted", {
+    title: payload.recipe.title || "",
+    ingredientCount: Array.isArray(payload.recipe.ingredients) ? payload.recipe.ingredients.length : 0,
+    instructionCount: Array.isArray(payload.recipe.instructions) ? payload.recipe.instructions.length : 0
+  });
   return recipeFromExtractedRecipe(payload.recipe, "photo", {
     sourceName: "AI photo extraction",
     fullText: payload.recipe.fullText || "",
@@ -174,4 +213,17 @@ function loadImage(file) {
 
 function normalizeText(value) {
   return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function logPhotoImport(message, details = {}) {
+  console.info(PHOTO_IMPORT_LOG_PREFIX, message, details);
+}
+
+function safeEndpointLabel(endpoint) {
+  try {
+    const url = new URL(endpoint, typeof window === "undefined" ? "http://localhost" : window.location.href);
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return "configured endpoint";
+  }
 }
