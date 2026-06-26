@@ -11,7 +11,7 @@
   --primary-strong: #246552;
   --primary-soft: #dff1e9;
   --accent: #2f7d68;
-  --warning: #95610d;
+  --warning: #5f756b;
   --danger: #b42318;
   --shadow-xs: 0 1px 2px rgb(29 41 38 / 0.08);
   --shadow: 0 18px 42px rgb(29 41 38 / 0.12);
@@ -46,7 +46,7 @@
     --primary-strong: #a6e3cf;
     --primary-soft: #1d3c34;
     --accent: #7fd0b5;
-    --warning: #f0bd6a;
+    --warning: #a9d6c3;
     --danger: #ff9b92;
     --shadow-xs: 0 1px 2px rgb(0 0 0 / 0.2);
     --shadow: 0 20px 50px rgb(0 0 0 / 0.38);
