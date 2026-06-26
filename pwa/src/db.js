@@ -17,10 +17,6 @@ export function openDatabase() {
         store.createIndex("title", "title");
       }
 
-      if (!db.objectStoreNames.contains("images")) {
-        db.createObjectStore("images", { keyPath: "id" });
-      }
-
       if (!db.objectStoreNames.contains("settings")) {
         db.createObjectStore("settings", { keyPath: "key" });
       }
@@ -60,35 +56,10 @@ export async function saveRecipe(recipe) {
 
 export async function deleteRecipe(id) {
   const db = await openDatabase();
-  const recipe = await getRecipe(id);
-  const tx = db.transaction(["recipes", "images"], "readwrite");
+  const tx = db.transaction("recipes", "readwrite");
   tx.objectStore("recipes").delete(id);
 
-  for (const image of recipe?.images || []) {
-    if (image.blobId) tx.objectStore("images").delete(image.blobId);
-  }
-
   await transactionComplete(tx);
-}
-
-export async function saveImageBlob(blob, metadata = {}) {
-  const db = await openDatabase();
-  const imageRecord = {
-    id: metadata.id || crypto.randomUUID(),
-    blob,
-    type: metadata.type || "dish",
-    createdAt: new Date().toISOString()
-  };
-
-  await requestToPromise(db.transaction("images", "readwrite").objectStore("images").put(imageRecord));
-  return imageRecord.id;
-}
-
-export async function getImageBlob(id) {
-  if (!id) return null;
-  const db = await openDatabase();
-  const image = await requestToPromise(db.transaction("images", "readonly").objectStore("images").get(id));
-  return image?.blob || null;
 }
 
 export async function getSetting(key) {

@@ -3,8 +3,8 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <meta name="theme-color" content="#f7f2e8" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#111827" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f5f8f6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#111816" media="(prefers-color-scheme: dark)" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Cookbook" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
@@ -91,8 +91,8 @@
             <input id="photoInput" type="file" accept="image/*" capture="environment" />
           </label>
           <img id="photoPreview" class="photo-preview hidden" alt="Selected recipe page" />
-          <p id="ocrStatus" class="hint" aria-live="polite">After you choose a photo, the app will try to read the recipe text automatically.</p>
-          <p class="hint">Photos are stored inside this app and can be uploaded to OneDrive. They are not saved to your normal Photos library by this app.</p>
+          <p id="photoStatus" class="hint" aria-live="polite">After you choose a photo, the app sends it to the configured AI extraction service. The photo is not stored.</p>
+          <p class="hint">The extraction service returns structured recipe JSON for review before saving.</p>
         </div>
 
         <div id="urlImportFields" class="import-fields hidden">
@@ -104,8 +104,8 @@
         </div>
 
         <label class="field-label">
-          Recipe text or HTML
-          <textarea id="recipeTextInput" rows="12" placeholder="Paste OCR text, recipe page text, or HTML here."></textarea>
+          Recipe text, HTML, or extracted JSON
+          <textarea id="recipeTextInput" rows="12" placeholder="Paste recipe page text or HTML here. Photo extraction JSON appears here for review."></textarea>
         </label>
 
         <div class="form-actions">

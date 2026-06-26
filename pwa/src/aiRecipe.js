@@ -1,0 +1,177 @@
+import { appConfig } from "./config.js";
+import { parseIngredientLine } from "./parser.js";
+import { parseUnit } from "./units.js";
+
+const PHOTO_MAX_DIMENSION = 1800;
+const PHOTO_JPEG_QUALITY = 0.82;
+
+export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
+  const endpoint = appConfig.aiExtractionEndpoint;
+  if (!endpoint) {
+    throw new Error("Photo extraction is not configured. Add your AI extraction endpoint in pwa/src/config.js.");
+  }
+
+  onProgress("Preparing photo for AI extraction...");
+  const imageDataUrl = await imageFileToJpegDataURL(file);
+
+  onProgress("Extracting recipe with AI...");
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imageDataUrl,
+      fileName: file.name || "recipe-photo.jpg",
+      mimeType: "image/jpeg"
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new Error(payload.error || "Photo recipe extraction failed.");
+  }
+
+  if (!payload.recipe) {
+    throw new Error("The extraction service did not return recipe JSON.");
+  }
+
+  onProgress("Recipe extracted. Review the JSON, then save.");
+  return recipeFromExtractedRecipe(payload.recipe, "photo", {
+    sourceName: "AI photo extraction",
+    fullText: payload.recipe.fullText || "",
+    language: payload.recipe.language || "unknown",
+    confidence: Number(payload.recipe.confidence) || 0,
+    warnings: Array.isArray(payload.recipe.warnings) ? payload.recipe.warnings : []
+  });
+}
+
+export function recipeFromExtractedRecipe(extracted, sourceType = "photo", metadata = {}) {
+  const sourceMetadata = {
+    sourceURL: extracted?.sourceMetadata?.sourceURL || metadata.sourceURL || "",
+    sourceName: extracted?.sourceMetadata?.sourceName || metadata.sourceName || "AI photo extraction",
+    author: "",
+    originalImageURL: "",
+    language: extracted?.language || metadata.language || "unknown",
+    confidence: Number(extracted?.confidence ?? metadata.confidence ?? 0) || 0,
+    warnings: Array.isArray(extracted?.warnings) ? extracted.warnings : metadata.warnings || [],
+    fullText: extracted?.fullText || metadata.fullText || "",
+    notes: extracted?.sourceMetadata?.notes || ""
+  };
+  const originalServings = Number(extracted?.servings) > 0 ? Number(extracted.servings) : 4;
+  const ingredients = Array.isArray(extracted?.ingredients) ? extracted.ingredients : [];
+  const instructions = Array.isArray(extracted?.instructions) ? extracted.instructions : [];
+
+  return {
+    id: crypto.randomUUID(),
+    title: normalizeText(extracted?.title) || "Untitled Recipe",
+    description: normalizeText(extracted?.description),
+    originalServings,
+    currentServings: originalServings,
+    sourceType,
+    ingredients: ingredients.map((ingredient, index) => normalizeExtractedIngredient(ingredient, index)),
+    instructions: instructions
+      .map((step, index) => ({
+        id: crypto.randomUUID(),
+        order: Number.isInteger(step?.order) ? step.order : index,
+        text: normalizeText(typeof step === "string" ? step : step?.text)
+      }))
+      .filter((step) => step.text)
+      .sort((left, right) => left.order - right.order)
+      .map((step, index) => ({ ...step, order: index })),
+    images: [],
+    sourceMetadata,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+export function recipeToEditableJSON(recipe) {
+  return {
+    title: recipe.title,
+    description: recipe.description,
+    servings: recipe.originalServings,
+    language: recipe.sourceMetadata?.language || "unknown",
+    ingredients: recipe.ingredients.map((ingredient) => ({
+      amount: Number.isFinite(ingredient.amount) ? ingredient.amount : null,
+      unit: ingredient.unit || null,
+      name: ingredient.name || "",
+      preparationNote: ingredient.preparationNote || "",
+      originalText: ingredient.originalText || ""
+    })),
+    instructions: recipe.instructions.map((step, index) => ({
+      order: index,
+      text: step.text
+    })),
+    fullText: recipe.sourceMetadata?.fullText || "",
+    sourceMetadata: {
+      sourceType: "photo",
+      sourceName: recipe.sourceMetadata?.sourceName || "AI photo extraction",
+      sourceURL: recipe.sourceMetadata?.sourceURL || "",
+      notes: recipe.sourceMetadata?.notes || ""
+    },
+    warnings: recipe.sourceMetadata?.warnings || [],
+    confidence: recipe.sourceMetadata?.confidence || 0
+  };
+}
+
+function normalizeExtractedIngredient(ingredient, index) {
+  const originalText = normalizeText(
+    ingredient?.originalText ||
+      [ingredient?.amount, ingredient?.unit, ingredient?.name, ingredient?.preparationNote].filter((value) => value !== null && value !== undefined && value !== "").join(" ")
+  );
+  const parsed = parseIngredientLine(originalText);
+  const hasAmount = ingredient?.amount !== null && ingredient?.amount !== undefined && ingredient?.amount !== "";
+  const amount = hasAmount && Number.isFinite(Number(ingredient.amount)) ? Number(ingredient.amount) : parsed.amount;
+  const unit = parseUnit(ingredient?.unit || "") || parsed.unit;
+  const name = normalizeText(ingredient?.name) || parsed.name || originalText;
+  const preparationNote = normalizeText(ingredient?.preparationNote) || parsed.preparationNote || "";
+
+  return {
+    id: crypto.randomUUID(),
+    order: index,
+    amount,
+    unit,
+    name,
+    preparationNote,
+    originalText
+  };
+}
+
+async function imageFileToJpegDataURL(file) {
+  if (typeof document === "undefined" || !document.createElement) {
+    throw new Error("Photo extraction must run in a browser.");
+  }
+
+  const image = await loadImage(file);
+  const width = image.naturalWidth || image.width;
+  const height = image.naturalHeight || image.height;
+  const scale = Math.min(1, PHOTO_MAX_DIMENSION / Math.max(width, height));
+  const targetWidth = Math.max(1, Math.round(width * scale));
+  const targetHeight = Math.max(1, Math.round(height * scale));
+  const canvas = document.createElement("canvas");
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const context = canvas.getContext("2d");
+  if (!context) throw new Error("The selected photo could not be prepared.");
+  context.drawImage(image, 0, 0, targetWidth, targetHeight);
+  return canvas.toDataURL("image/jpeg", PHOTO_JPEG_QUALITY);
+}
+
+function loadImage(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      URL.revokeObjectURL(url);
+      resolve(image);
+    };
+    image.onerror = () => {
+      URL.revokeObjectURL(url);
+      reject(new Error("The selected photo could not be read."));
+    };
+    image.src = url;
+  });
+}
+
+function normalizeText(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}

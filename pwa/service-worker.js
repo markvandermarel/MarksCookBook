@@ -1,4 +1,4 @@
-const CACHE_NAME = "recipe-cookbook-pwa-v6";
+const CACHE_NAME = "recipe-cookbook-pwa-v7";
 
 const APP_SHELL = [
   "./",
@@ -7,10 +7,9 @@ const APP_SHELL = [
   "./manifest.webmanifest",
   "./assets/icon.svg",
   "./src/app.js",
+  "./src/aiRecipe.js",
   "./src/config.js",
   "./src/db.js",
-  "./src/ocr.js",
-  "./src/onedrive.js",
   "./src/parser.js",
   "./src/units.js"
 ];

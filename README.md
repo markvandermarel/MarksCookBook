@@ -1,6 +1,6 @@
 # Recipe Cookbook PWA
 
-Recipe Cookbook is now a private, installable web app for iPhone, iPad, desktop, and other modern browsers. It stores recipes and images locally with IndexedDB, works offline after installation, and can optionally upload recipe images to OneDrive through Microsoft Graph.
+Recipe Cookbook is a private, installable web app for iPhone, iPad, desktop, and other modern browsers. It stores structured recipe data locally with IndexedDB, works offline after recipes are saved, and uses an optional AI extraction backend for cookbook photos.
 
 The original SwiftUI/Xcode project is preserved here:
 
@@ -44,70 +44,68 @@ After deploying an update, open the HTTPS URL in Safari once before launching fr
 - Search by recipe title or ingredient.
 - Multi-ingredient filters with **Match All** and **Match Any** modes.
 - Add recipes from:
-  - photo
+  - photo through an AI extraction backend
   - URL
   - pasted text or HTML
-- Local image storage inside IndexedDB.
-- Deterministic parsing for title, description, ingredients, instructions, and servings.
+- OpenAI vision extraction for photo imports with strict JSON output.
+- Deterministic parsing for URL and pasted-text imports.
 - schema.org Recipe JSON-LD extraction where a site allows browser access.
 - Ingredient scaling when serving size changes.
 - US, British/imperial, and metric unit conversion.
 - Full instruction view and step-by-step cooking mode.
-- Optional final dish photo.
 - JSON backup export.
 - Offline app shell through a service worker.
 
-## Browser OCR Limitation
+## Photo Extraction Setup
 
-The PWA cannot use Apple Vision OCR because that framework is native-only. The photo flow now loads Tesseract.js in the browser, reads English, German, and Dutch text from the selected recipe photo, and places the extracted text into the import box for review before saving.
+Photo imports use a small backend endpoint so your OpenAI API key is never exposed in the browser. The selected photo is compressed in the browser, sent to the backend for extraction, and then discarded. The PWA saves only the structured recipe JSON.
 
-First-time OCR use needs an internet connection so the Tesseract.js library can be loaded from the CDN. If OCR cannot read the photo cleanly, use iPhone Live Text or paste corrected recipe text into the import box.
-
-The parser replacement point is `pwa/src/parser.js`.
-
-## OneDrive Setup
-
-OneDrive is optional. Without configuration, recipes and images remain local.
-
-To enable Microsoft Graph uploads:
-
-1. Create an app registration in Microsoft Entra.
-2. Configure it as a Single Page Application.
-3. Add the deployed HTTPS URL as a redirect URI, for example:
+The backend template is:
 
 ```text
-https://your-user.github.io/recipe-cookbook/index.html
+api/extract-recipe.js
 ```
 
-4. Add delegated Microsoft Graph permissions:
+Deploy that endpoint to a serverless host such as Vercel, Netlify Functions, Cloudflare Workers, or Azure Functions. The included file is shaped for a Vercel-style Node function.
+
+Set these environment variables on the backend:
 
 ```text
-User.Read
-Files.ReadWrite.AppFolder
-offline_access
+OPENAI_API_KEY=your_openai_api_key
+OPENAI_MODEL=gpt-5.4-mini
+ALLOWED_ORIGIN=https://your-github-user.github.io
 ```
 
-5. Put the application client ID in:
+`ALLOWED_ORIGIN` is optional for local experiments, but recommended once deployed.
+
+Then put the deployed endpoint URL in:
 
 ```text
 pwa/src/config.js
 ```
 
-```js
+```javascript
 export const appConfig = {
-  microsoftClientId: "YOUR_CLIENT_ID",
-  microsoftTenant: "common",
-  graphScopes: ["User.Read", "Files.ReadWrite.AppFolder", "offline_access"]
-};
+  aiExtractionEndpoint: "https://your-project.vercel.app/api/extract-recipe"
+}
 ```
 
-Images upload to the Microsoft Graph app folder:
+For GitHub Pages, the PWA and backend are separate deployments:
 
 ```text
-/Apps/RecipeCookbook/
+GitHub Pages: static PWA files in /pwa
+Vercel or similar: /api/extract-recipe.js
 ```
 
-If OneDrive is not connected or upload fails, images remain local and are marked as pending sync.
+Photo extraction supports English, German, and Dutch recipe pages. The model returns:
+
+- recipe title
+- description
+- serving size
+- structured ingredients
+- step-by-step instructions
+- reconstructed full text
+- language, warnings, and confidence metadata
 
 ## URL Import Limitation
 
@@ -133,15 +131,16 @@ pwa/
   service-worker.js
   assets/
   src/
+    aiRecipe.js
     app.js
     config.js
     db.js
-    ocr.js
-    onedrive.js
     parser.js
     units.js
   tests/
     run-tests.mjs
+api/
+  extract-recipe.js
 Archives/
   RecipeCookbook-SwiftUI-iOS.zip
 ```
@@ -150,6 +149,6 @@ Archives/
 
 - Add editable recipe correction screens.
 - Add import/export restore flow for JSON backups.
-- Add a selectable cloud OCR adapter for difficult cookbook scans.
 - Add tags, cuisine, prep time, and cook time filters.
-- Add richer OneDrive backup sync for recipe metadata, not only images.
+- Add authenticated access to the extraction backend for stronger protection.
+- Add optional cloud backup for recipe metadata.

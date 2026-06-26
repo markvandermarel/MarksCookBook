@@ -1,5 +1,5 @@
 export const appConfig = {
-  microsoftClientId: "",
-  microsoftTenant: "common",
-  graphScopes: ["User.Read", "Files.ReadWrite.AppFolder", "offline_access"]
+  // For GitHub Pages, deploy api/extract-recipe.js separately and paste that HTTPS URL here.
+  // Example: "https://your-project.vercel.app/api/extract-recipe"
+  aiExtractionEndpoint: ""
 };

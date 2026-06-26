@@ -1,13 +1,6 @@
-import { deleteRecipe, exportDatabase, getImageBlob, listRecipes, saveImageBlob, saveRecipe } from "./db.js";
+import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js";
+import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js";
 import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js";
-import { recognizeRecipeTextFromImage } from "./ocr.js";
-import {
-  getAccountStatus,
-  handleMicrosoftRedirect,
-  signInToOneDrive,
-  signOutFromOneDrive,
-  uploadBlobToOneDrive
-} from "./onedrive.js";
 import { formatIngredient } from "./units.js";
 
 const state = {
@@ -20,11 +13,12 @@ const state = {
   instructionMode: "full",
   stepIndex: 0,
   importMode: "text",
-  selectedPhotoBlob: null,
-  isOcrRunning: false,
+  pendingPhotoRecipe: null,
+  isLoading: true,
+  loadError: "",
+  isPhotoExtracting: false,
   isImportSaving: false,
-  objectURLs: new Set(),
-  account: { signedIn: false, label: "OneDrive" }
+  objectURLs: new Set()
 };
 
 const elements = {
@@ -40,7 +34,7 @@ const elements = {
   urlImportFields: document.querySelector("#urlImportFields"),
   photoInput: document.querySelector("#photoInput"),
   photoPreview: document.querySelector("#photoPreview"),
-  ocrStatus: document.querySelector("#ocrStatus"),
+  photoStatus: document.querySelector("#photoStatus"),
   urlInput: document.querySelector("#urlInput"),
   recipeTextInput: document.querySelector("#recipeTextInput"),
   parseRecipeButton: document.querySelector("#parseRecipeButton"),
@@ -60,14 +54,7 @@ init();
 async function init() {
   registerServiceWorker();
   bindEvents();
-
-  try {
-    if (await handleMicrosoftRedirect()) toast("OneDrive connected.");
-  } catch (error) {
-    toast(error.message || "Microsoft sign-in failed.");
-  }
-
-  state.account = await getAccountStatus();
+  render();
   await reloadRecipes();
 }
 
@@ -102,24 +89,28 @@ function bindEvents() {
   elements.photoInput.addEventListener("change", async (event) => {
     const file = event.target.files?.[0];
     if (!file) return;
-    state.selectedPhotoBlob = file;
-    elements.photoPreview.src = URL.createObjectURL(file);
+    state.pendingPhotoRecipe = null;
+    const previewURL = URL.createObjectURL(file);
+    state.objectURLs.add(previewURL);
+    elements.photoPreview.src = previewURL;
     elements.photoPreview.classList.remove("hidden");
-    elements.ocrStatus.textContent = "Preparing OCR...";
-    state.isOcrRunning = true;
+    elements.photoStatus.textContent = "Preparing photo...";
+    elements.recipeTextInput.value = "";
+    state.isPhotoExtracting = true;
     updateImportButtonState();
 
     try {
-      const text = await recognizeRecipeTextFromImage(file, (message) => {
-        elements.ocrStatus.textContent = message;
+      const recipe = await extractRecipeFromPhoto(file, (message) => {
+        elements.photoStatus.textContent = message;
       });
-      elements.recipeTextInput.value = text;
-      toast("Photo text extracted. Review it, then save.");
+      state.pendingPhotoRecipe = recipe;
+      elements.recipeTextInput.value = JSON.stringify(recipeToEditableJSON(recipe), null, 2);
+      toast("Recipe extracted. Review the JSON, then save.");
     } catch (error) {
-      elements.ocrStatus.textContent = error.message || "OCR failed. You can paste the recipe text manually.";
-      toast(elements.ocrStatus.textContent);
+      elements.photoStatus.textContent = error.message || "Photo extraction failed.";
+      toast(elements.photoStatus.textContent);
     } finally {
-      state.isOcrRunning = false;
+      state.isPhotoExtracting = false;
       updateImportButtonState();
     }
   });
@@ -127,7 +118,7 @@ function bindEvents() {
 
 function openImportDialog(mode) {
   state.importMode = mode;
-  state.selectedPhotoBlob = null;
+  state.pendingPhotoRecipe = null;
   elements.addDialog.close();
   elements.importTitle.textContent =
     mode === "photo" ? "Add from Photo" : mode === "url" ? "Add from URL" : "Add from Text";
@@ -135,19 +126,19 @@ function openImportDialog(mode) {
   elements.urlImportFields.classList.toggle("hidden", mode !== "url");
   elements.photoPreview.classList.add("hidden");
   elements.photoPreview.removeAttribute("src");
-  elements.ocrStatus.textContent = "After you choose a photo, the app will try to read the recipe text automatically.";
+  elements.photoStatus.textContent = "After you choose a photo, the app sends it to the configured AI extraction service. The photo is not stored.";
   elements.photoInput.value = "";
   elements.urlInput.value = "";
   elements.recipeTextInput.value = "";
-  state.isOcrRunning = false;
+  state.isPhotoExtracting = false;
   state.isImportSaving = false;
   updateImportButtonState();
   elements.importDialog.showModal();
 }
 
 async function parseAndSaveImport() {
-  if (state.isOcrRunning) {
-    toast("Please wait until photo text extraction finishes.");
+  if (state.isPhotoExtracting) {
+    toast("Please wait until photo extraction finishes.");
     return;
   }
 
@@ -159,7 +150,9 @@ async function parseAndSaveImport() {
     state.isImportSaving = true;
     updateImportButtonState();
 
-    if (state.importMode === "url" && urlText) {
+    if (state.importMode === "photo") {
+      recipe = recipeFromPhotoJSON(sourceText, state.pendingPhotoRecipe);
+    } else if (state.importMode === "url" && urlText) {
       try {
         recipe = await importRecipeFromURL(urlText);
       } catch (error) {
@@ -172,23 +165,9 @@ async function parseAndSaveImport() {
 
     validateImportedRecipe(recipe, state.importMode);
 
-    if (state.selectedPhotoBlob) {
-      const blobId = await saveImageBlob(state.selectedPhotoBlob, { type: "scan" });
-      recipe.images.unshift({
-        id: crypto.randomUUID(),
-        type: "scan",
-        blobId,
-        remoteURL: "",
-        oneDrivePath: "",
-        syncStatus: "pendingUpload"
-      });
-    }
-
     const savedRecipe = await saveRecipe(recipe);
     state.selectedId = savedRecipe.id;
     elements.importDialog.close();
-    await reloadRecipes();
-    await syncPendingUploads({ silent: true });
     await reloadRecipes();
     toast("Recipe saved.");
   } catch (error) {
@@ -200,26 +179,55 @@ async function parseAndSaveImport() {
 }
 
 function validateImportedRecipe(recipe, mode) {
+  if (mode === "photo" && recipe.ingredients.length && recipe.instructions.length) return;
+  if (mode === "photo") {
+    throw new Error("Photo extraction must include both ingredients and instructions. Try a clearer photo or edit the extracted JSON.");
+  }
+
   if (recipe.ingredients.length || recipe.instructions.length) return;
 
   const guidance =
-    mode === "photo"
-      ? "No ingredients or instructions were found. Try a clearer photo, better lighting, or paste corrected OCR text."
-      : mode === "url"
-        ? "No ingredients or instructions were found. The site may block imports; paste the page text or HTML into the box."
-        : "No ingredients or instructions were found. Check the recipe text and try again.";
+    mode === "url"
+      ? "No ingredients or instructions were found. The site may block imports; paste the page text or HTML into the box."
+      : "No ingredients or instructions were found. Check the recipe text and try again.";
   throw new Error(guidance);
 }
 
+function recipeFromPhotoJSON(sourceText, pendingRecipe) {
+  if (!sourceText && pendingRecipe) return pendingRecipe;
+  if (!sourceText) throw new Error("Choose a photo and wait for extraction before saving.");
+
+  try {
+    return recipeFromExtractedRecipe(JSON.parse(sourceText), "photo", {
+      sourceName: "AI photo extraction"
+    });
+  } catch {
+    throw new Error("The extracted recipe JSON could not be read. Choose the photo again or fix the JSON.");
+  }
+}
+
 function updateImportButtonState() {
-  elements.parseRecipeButton.disabled = state.isOcrRunning || state.isImportSaving;
-  elements.parseRecipeButton.textContent = state.isOcrRunning ? "Reading Photo..." : state.isImportSaving ? "Saving..." : "Parse and Save";
+  elements.parseRecipeButton.disabled = state.isPhotoExtracting || state.isImportSaving;
+  elements.parseRecipeButton.textContent = state.isPhotoExtracting ? "Extracting..." : state.isImportSaving ? "Saving..." : "Save Recipe";
 }
 
 async function reloadRecipes() {
-  state.recipes = await listRecipes();
-  if (!state.selectedId && state.recipes.length) state.selectedId = state.recipes[0].id;
+  state.isLoading = true;
+  state.loadError = "";
   render();
+
+  try {
+    state.recipes = await listRecipes();
+    if (!state.selectedId && state.recipes.length) state.selectedId = state.recipes[0].id;
+  } catch (error) {
+    state.recipes = [];
+    state.selectedId = "";
+    state.loadError = error.message || "The recipe library could not be loaded.";
+    toast(state.loadError);
+  } finally {
+    state.isLoading = false;
+    render();
+  }
 }
 
 function render() {
@@ -251,13 +259,42 @@ function renderSelectedChips() {
 }
 
 function renderRecipeList() {
+  elements.recipeList.setAttribute("aria-busy", state.isLoading ? "true" : "false");
+
+  if (state.isLoading) {
+    elements.recipeList.replaceChildren(createLoadingState());
+    return;
+  }
+
+  if (state.loadError) {
+    elements.recipeList.replaceChildren(
+      createStatePanel({
+        tone: "error",
+        icon: "!",
+        title: "Cookbook unavailable",
+        message: state.loadError,
+        actionLabel: "Try again",
+        onAction: reloadRecipes
+      })
+    );
+    return;
+  }
+
   const recipes = filteredRecipes();
 
   if (!recipes.length) {
-    const empty = document.createElement("div");
-    empty.className = "empty-list";
-    empty.innerHTML = "<h2>No recipes</h2><p>Add a recipe from a photo, website, or pasted text.</p>";
-    elements.recipeList.replaceChildren(empty);
+    const hasFilters = Boolean(state.search.trim() || state.selectedIngredients.size);
+    elements.recipeList.replaceChildren(
+      createStatePanel({
+        icon: hasFilters ? "0" : "+",
+        title: hasFilters ? "No matching recipes" : "Start your cookbook",
+        message: hasFilters
+          ? "Try a different search or clear the ingredient filters."
+          : "Add a recipe from a photo, website, or pasted text.",
+        actionLabel: hasFilters ? "Clear filters" : "Add recipe",
+        onAction: hasFilters ? clearRecipeFilters : () => elements.addDialog.showModal()
+      })
+    );
     return;
   }
 
@@ -284,7 +321,7 @@ function renderRecipeList() {
       <p>${escapeHTML(recipe.description || "No description")}</p>
       <div class="meta-row">
         <span>${recipe.ingredients.length} ingredients</span>
-        <span>${recipe.sourceType === "url" ? "Website" : recipe.sourceType === "photo" ? "Photo" : "Text"}</span>
+        <span>${sourceLabel(recipe.sourceType)}</span>
       </div>
     `;
 
@@ -295,16 +332,112 @@ function renderRecipeList() {
   elements.recipeList.replaceChildren(...cards);
 }
 
+function createLoadingState() {
+  const wrapper = document.createElement("div");
+  wrapper.className = "skeleton-list";
+  wrapper.setAttribute("role", "status");
+  wrapper.setAttribute("aria-label", "Loading recipes");
+
+  for (let index = 0; index < 4; index += 1) {
+    const card = document.createElement("div");
+    card.className = "skeleton-card";
+    card.setAttribute("aria-hidden", "true");
+    card.innerHTML = `
+      <div class="skeleton-thumb"></div>
+      <div class="skeleton-copy">
+        <div class="skeleton-line medium"></div>
+        <div class="skeleton-line"></div>
+        <div class="skeleton-line short"></div>
+      </div>
+    `;
+    wrapper.append(card);
+  }
+
+  return wrapper;
+}
+
+function createStatePanel({ tone = "", icon = "", title, message, actionLabel = "", onAction = null }) {
+  const panel = document.createElement("div");
+  panel.className = ["state-panel", tone].filter(Boolean).join(" ");
+
+  if (icon) {
+    const iconElement = document.createElement("div");
+    iconElement.className = "state-icon";
+    iconElement.setAttribute("aria-hidden", "true");
+    iconElement.textContent = icon;
+    panel.append(iconElement);
+  }
+
+  const heading = document.createElement("h2");
+  heading.textContent = title;
+
+  const copy = document.createElement("p");
+  copy.textContent = message;
+
+  panel.append(heading, copy);
+
+  if (actionLabel && onAction) {
+    const action = document.createElement("button");
+    action.type = "button";
+    action.className = tone === "error" ? "secondary-button" : "primary-button";
+    action.textContent = actionLabel;
+    action.addEventListener("click", onAction);
+    panel.append(action);
+  }
+
+  return panel;
+}
+
+function clearRecipeFilters() {
+  state.search = "";
+  state.selectedIngredients.clear();
+  elements.searchInput.value = "";
+  render();
+}
+
 function renderDetail() {
+  if (state.isLoading) {
+    elements.detailPane.innerHTML = `
+      <div class="empty-detail">
+        <div class="state-panel compact">
+          <div class="state-icon" aria-hidden="true">...</div>
+          <h2>Loading your cookbook</h2>
+          <p>Getting recipes ready for browsing and cooking.</p>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
+  if (state.loadError) {
+    elements.detailPane.innerHTML = "";
+    const shell = document.createElement("div");
+    shell.className = "empty-detail";
+    shell.append(
+      createStatePanel({
+        tone: "error",
+        icon: "!",
+        title: "Something needs attention",
+        message: state.loadError,
+        actionLabel: "Try again",
+        onAction: reloadRecipes
+      })
+    );
+    elements.detailPane.append(shell);
+    return;
+  }
+
   const recipe = selectedRecipe();
   if (!recipe) {
     elements.detailPane.innerHTML = `
       <div class="empty-detail">
         <img src="./assets/icon.svg" alt="">
         <h2>No recipe selected</h2>
-        <p>Add a recipe from a photo or website to start building your private cookbook.</p>
+        <p>Add a recipe from a photo, website, or pasted text to start building your private cookbook.</p>
+        <button class="primary-button" id="emptyDetailAddButton" type="button">Add recipe</button>
       </div>
     `;
+    elements.detailPane.querySelector("#emptyDetailAddButton")?.addEventListener("click", () => elements.addDialog.showModal());
     return;
   }
 
@@ -340,12 +473,8 @@ function renderDetail() {
           </label>
         </div>
         <div class="detail-actions">
-          <button id="dishPhotoButton" class="secondary-button" type="button">${recipe.images.some((image) => image.type === "dish") ? "Replace Dish Photo" : "Add Dish Photo"}</button>
-          <button id="oneDriveButton" class="secondary-button" type="button">${state.account.signedIn ? "Disconnect OneDrive" : "Connect OneDrive"}</button>
-          <button id="syncButton" class="secondary-button" type="button">Sync Pending</button>
           <button id="exportButton" class="secondary-button" type="button">Export JSON</button>
           <button id="deleteButton" class="danger-button" type="button">Delete</button>
-          <input id="dishPhotoInput" class="hidden" type="file" accept="image/*" capture="environment">
         </div>
       </section>
 
@@ -396,45 +525,6 @@ function bindDetailEvents(recipe) {
     renderDetail();
   });
 
-  elements.detailPane.querySelector("#dishPhotoButton").addEventListener("click", () => {
-    elements.detailPane.querySelector("#dishPhotoInput").click();
-  });
-
-  elements.detailPane.querySelector("#dishPhotoInput").addEventListener("change", async (event) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    recipe.images = recipe.images.filter((image) => image.type !== "dish");
-    recipe.images.unshift({
-      id: crypto.randomUUID(),
-      type: "dish",
-      blobId: await saveImageBlob(file, { type: "dish" }),
-      remoteURL: "",
-      oneDrivePath: "",
-      syncStatus: "pendingUpload"
-    });
-    await saveRecipe(recipe);
-    await reloadRecipes();
-    await syncPendingUploads({ silent: true });
-    await reloadRecipes();
-    toast("Dish photo saved.");
-  });
-
-  elements.detailPane.querySelector("#oneDriveButton").addEventListener("click", async () => {
-    try {
-      if (state.account.signedIn) {
-        await signOutFromOneDrive();
-        state.account = await getAccountStatus();
-        renderDetail();
-        toast("OneDrive disconnected.");
-      } else {
-        await signInToOneDrive();
-      }
-    } catch (error) {
-      toast(error.message || "OneDrive could not be connected.");
-    }
-  });
-
-  elements.detailPane.querySelector("#syncButton").addEventListener("click", () => syncPendingUploads({ silent: false }));
   elements.detailPane.querySelector("#exportButton").addEventListener("click", exportJSONBackup);
   elements.detailPane.querySelector("#deleteButton").addEventListener("click", async () => {
     if (!confirm(`Delete "${recipe.title}"?`)) return;
@@ -510,7 +600,7 @@ function renderImages(recipe) {
             (image) => `
             <figure class="image-item">
               <img data-image-id="${image.id}" alt="${escapeHTML(image.type)} image">
-              <figcaption class="hint">${escapeHTML(displayImageType(image.type))}${image.syncStatus === "pendingUpload" ? " - Pending OneDrive sync" : ""}</figcaption>
+              <figcaption class="hint">${escapeHTML(displayImageType(image.type))}</figcaption>
             </figure>`
           )
           .join("")}
@@ -632,7 +722,6 @@ function selectedRecipe() {
 
 function bestImage(recipe) {
   return (
-    recipe.images.find((image) => image.type === "dish") ||
     recipe.images.find((image) => image.type === "website") ||
     recipe.images[0] ||
     null
@@ -646,60 +735,7 @@ async function setImageSource(img, image) {
     return;
   }
 
-  if (image.blobId) {
-    const blob = await getImageBlob(image.blobId);
-    if (blob) {
-      const url = URL.createObjectURL(blob);
-      state.objectURLs.add(url);
-      img.src = url;
-      return;
-    }
-  }
-
   img.src = image.remoteURL || "./assets/icon.svg";
-}
-
-async function syncPendingUploads({ silent } = { silent: false }) {
-  if (!state.account.signedIn) {
-    if (!silent) toast("Connect OneDrive before syncing.");
-    return;
-  }
-
-  let synced = 0;
-  let failed = 0;
-  let lastError = "";
-  for (const recipe of state.recipes) {
-    let changed = false;
-    for (const image of recipe.images) {
-      if (image.syncStatus !== "pendingUpload" || !image.blobId) continue;
-      const blob = await getImageBlob(image.blobId);
-      if (!blob) continue;
-
-      try {
-        const fileName = `${image.type}-${image.blobId}.jpg`;
-        const reference = await uploadBlobToOneDrive(blob, fileName);
-        image.oneDrivePath = reference.oneDrivePath;
-        image.remoteURL = reference.webURL || image.remoteURL;
-        image.syncStatus = "uploaded";
-        changed = true;
-        synced += 1;
-      } catch (error) {
-        image.syncStatus = "pendingUpload";
-        failed += 1;
-        lastError = error.message || "OneDrive upload failed.";
-      }
-    }
-    if (changed) await saveRecipe(recipe);
-  }
-
-  if (synced) {
-    await reloadRecipes();
-    if (!silent) toast(`Synced ${synced} image${synced === 1 ? "" : "s"} to OneDrive.`);
-  } else if (failed && !silent) {
-    toast(lastError || `OneDrive sync failed for ${failed} image${failed === 1 ? "" : "s"}.`);
-  } else if (!silent) {
-    toast("No pending uploads synced.");
-  }
 }
 
 async function exportJSONBackup() {
@@ -718,7 +754,11 @@ function option(value, label, selectedValue) {
 }
 
 function displayImageType(type) {
-  return { scan: "Original Scan", website: "Website Image", dish: "Dish Photo" }[type] || "Recipe Image";
+  return { website: "Website Image" }[type] || "Recipe Image";
+}
+
+function sourceLabel(sourceType) {
+  return { url: "Website", photo: "Photo", text: "Text" }[sourceType] || "Recipe";
 }
 
 function toast(message) {
