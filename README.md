@@ -1,6 +1,6 @@
 # Recipe Cookbook PWA
 
-Recipe Cookbook is a private, installable web app for iPhone, iPad, desktop, and other modern browsers. It stores structured recipe data locally with IndexedDB, works offline after recipes are saved, and uses an optional AI extraction backend for cookbook photos.
+Recipe Cookbook is a private, installable web app for iPhone, iPad, desktop, and other modern browsers. It stores structured recipe data locally with IndexedDB, works offline after recipes are saved, and uses an optional AI extraction backend for cookbook photos and recipe URLs.
 
 The original SwiftUI/Xcode project is preserved here:
 
@@ -34,7 +34,7 @@ Do not open `pwa/index.html` directly from the filesystem. Browser security bloc
 http://localhost:8080/api/extract-recipe
 ```
 
-No AI key is required for a local smoke test. If `OPENAI_API_KEY` is not configured, the local backend returns a clearly marked mock recipe so you can test the photo review and save flow without sending the image to a provider.
+No AI key is required for a local smoke test. If `OPENAI_API_KEY` is not configured, the local backend returns a clearly marked mock recipe so you can test the photo and URL save flows without sending content to a provider.
 
 For real local extraction, copy the example env file and add your backend-only key:
 
@@ -71,10 +71,10 @@ After deploying an update, open the HTTPS URL in Safari once before launching fr
 - Multi-ingredient filters with **Match All** and **Match Any** modes.
 - Add recipes from:
   - photo through an AI extraction backend
-  - URL
+  - URL through the same AI extraction backend
   - pasted text or HTML
-- OpenAI vision extraction for photo imports with strict JSON output.
-- Deterministic parsing for URL and pasted-text imports.
+- OpenAI extraction for photo and URL imports with strict JSON output.
+- Deterministic parsing fallback for pasted text and HTML.
 - schema.org Recipe JSON-LD extraction where a site allows browser access.
 - Ingredient scaling when serving size changes.
 - US, British/imperial, and metric unit conversion.
@@ -82,14 +82,14 @@ After deploying an update, open the HTTPS URL in Safari once before launching fr
 - JSON backup export.
 - Offline app shell through a service worker.
 
-## Photo Extraction Setup
+## AI Extraction Setup
 
-Photo imports use a small backend endpoint so your AI/OCR provider key is never exposed in the browser. The selected photo is compressed in the browser, sent to the backend for extraction, and then discarded by the PWA. The backend returns structured recipe JSON, the app places that JSON in the import dialog for review, and the recipe is saved only after you choose **Save Recipe**.
+Photo and URL imports use a small backend endpoint so your AI/OCR provider key is never exposed in the browser. Photos are compressed in the browser before upload. URL imports send the recipe URL, plus any pasted page text if provided, to the backend. The backend returns structured recipe JSON, the app normalizes it, and the recipe is saved only after you choose **Save Recipe**.
 
 Current request flow:
 
 ```text
-Browser PWA -> POST /api/extract-recipe -> backend reads OPENAI_API_KEY -> AI/OCR provider -> structured recipe JSON -> browser review step
+Browser PWA -> POST /api/extract-recipe -> backend reads OPENAI_API_KEY -> AI/OCR provider -> structured recipe JSON -> browser save/review flow
 ```
 
 The frontend configuration contains only an endpoint URL:
@@ -143,11 +143,11 @@ GitHub Pages: static PWA files in /pwa
 Vercel or similar: /api/extract-recipe.js
 ```
 
-GitHub Pages cannot run `api/extract-recipe.js` and cannot read `OPENAI_API_KEY`. If `aiExtractionEndpoint` is left as `/api/extract-recipe` on GitHub Pages, photo extraction will not call the AI provider. Deploy the backend to a serverless/Node host first, set `OPENAI_API_KEY` there, then update `pwa/src/config.js` with that backend's HTTPS URL.
+GitHub Pages cannot run `api/extract-recipe.js` and cannot read `OPENAI_API_KEY`. If `aiExtractionEndpoint` is left as `/api/extract-recipe` on GitHub Pages, photo and URL extraction will not call the AI provider. Deploy the backend to a serverless/Node host first, set `OPENAI_API_KEY` there, then update `pwa/src/config.js` with that backend's HTTPS URL.
 
 ### Mock Extraction
 
-The backend supports mock extraction for local testing. When `npm start` is running on localhost and `OPENAI_API_KEY` is missing, `/api/extract-recipe` returns a mock recipe with warnings and `provider.mode = "mock"`.
+The backend supports mock extraction for local testing. When `npm start` is running on localhost and `OPENAI_API_KEY` is missing, `/api/extract-recipe` returns a mock recipe for photo and URL requests with warnings and `provider.mode = "mock"`.
 
 You can also control mock mode explicitly:
 
@@ -158,7 +158,7 @@ MOCK_RECIPE_EXTRACTION=false  # disable implicit localhost mock mode
 
 If a deployed backend is missing `OPENAI_API_KEY`, it returns a helpful error instead of exposing any secret or failing silently.
 
-Photo extraction supports English, German, and Dutch recipe pages. The model returns:
+AI extraction supports English, German, and Dutch recipe sources. The model returns:
 
 - recipe title
 - description
@@ -170,7 +170,7 @@ Photo extraction supports English, German, and Dutch recipe pages. The model ret
 
 ## URL Import Limitation
 
-Browser security rules prevent many sites from being fetched directly because of CORS. The importer first tries the original page and structured schema.org Recipe JSON-LD, then falls back to a reader-text fetch for blocked pages. If both paths fail, paste the page text or HTML into the import dialog.
+URL imports now use the backend instead of browser-side CORS fetches. The backend fetches the recipe page, keeps useful structured/page text for the model, and asks OpenAI to return strict recipe JSON. Some sites may still block server-side fetches; if that happens, paste the recipe card text or HTML into the import dialog and the backend will extract from that pasted content.
 
 ## Tests
 
@@ -180,7 +180,7 @@ Run:
 npm test
 ```
 
-Tests cover ingredient parsing, instruction splitting, serving scaling, unit conversion, recipe text parsing, schema.org HTML extraction, and reader-style recipe-card extraction.
+Tests cover ingredient parsing, instruction splitting, serving scaling, unit conversion, recipe text parsing, schema.org HTML extraction, reader-style recipe-card extraction, and photo/URL backend extraction modes.
 
 ## File Layout
 

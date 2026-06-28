@@ -1,7 +1,7 @@
-import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-extraction4";
-import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-extraction4";
-import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260628-extraction4";
-import { formatIngredient } from "./units.js?v=20260628-extraction4";
+import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-urlai1";
+import { extractRecipeFromPhoto, extractRecipeFromURL, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-urlai1";
+import { extractRecipeFromHTML, parseRecipeText } from "./parser.js?v=20260628-urlai1";
+import { formatIngredient } from "./units.js?v=20260628-urlai1";
 
 const state = {
   recipes: [],
@@ -166,11 +166,28 @@ async function parseAndSaveImport() {
 
       recipe = recipeFromPhotoJSON(sourceText, state.pendingPhotoRecipe);
     } else if (state.importMode === "url" && urlText) {
-      try {
-        recipe = await importRecipeFromURL(urlText);
-      } catch (error) {
-        if (!sourceText) throw error;
-        recipe = sourceText.includes("<") ? extractRecipeFromHTML(sourceText, urlText) : parseRecipeText(sourceText, "url", { sourceURL: urlText });
+      const editedAIRecipe = recipeFromEditableJSON(sourceText, "url", {
+        sourceName: "AI URL extraction",
+        sourceURL: urlText
+      });
+
+      if (editedAIRecipe) {
+        recipe = editedAIRecipe;
+      } else {
+        try {
+          recipe = await extractRecipeFromURL(urlText, sourceText, (message) => {
+            toast(message);
+            console.info("[Recipe Cookbook URL import] progress", { message });
+          });
+          elements.recipeTextInput.value = JSON.stringify(recipeToEditableJSON(recipe), null, 2);
+          sourceText = elements.recipeTextInput.value.trim();
+        } catch (error) {
+          if (!sourceText) throw error;
+          console.warn("[Recipe Cookbook URL import] backend extraction failed; using pasted text parser", {
+            message: error.message || String(error)
+          });
+          recipe = sourceText.includes("<") ? extractRecipeFromHTML(sourceText, urlText) : parseRecipeText(sourceText, "url", { sourceURL: urlText });
+        }
       }
     } else {
       recipe = sourceText.includes("<") ? extractRecipeFromHTML(sourceText, urlText) : parseRecipeText(sourceText, state.importMode);
@@ -214,7 +231,7 @@ function validateImportedRecipe(recipe, mode) {
 
   const guidance =
     mode === "url"
-      ? "No ingredients or instructions were found. The site may block imports; paste the page text or HTML into the box."
+      ? "No ingredients or instructions were found. The site may block imports; paste the recipe card text or HTML into the box."
       : "No ingredients or instructions were found. Check the recipe text and try again.";
   throw new Error(guidance);
 }
@@ -230,6 +247,21 @@ function recipeFromPhotoJSON(sourceText, pendingRecipe) {
   } catch {
     throw new Error("The extracted recipe JSON could not be read. Choose the photo again or fix the JSON.");
   }
+}
+
+function recipeFromEditableJSON(sourceText, sourceType, metadata = {}) {
+  if (!looksLikeEditableRecipeJSON(sourceText)) return null;
+
+  try {
+    return recipeFromExtractedRecipe(JSON.parse(sourceText), sourceType, metadata);
+  } catch {
+    throw new Error("The extracted recipe JSON could not be read. Fix the JSON or run extraction again.");
+  }
+}
+
+function looksLikeEditableRecipeJSON(sourceText) {
+  const text = String(sourceText || "").trim();
+  return text.startsWith("{") && /"(ingredients|instructions|sourceMetadata)"\s*:/i.test(text);
 }
 
 async function extractSelectedPhotoRecipe() {
@@ -269,7 +301,9 @@ function updateImportButtonState() {
     state.isPhotoExtracting
       ? "Extracting..."
       : state.isImportSaving
-        ? "Saving..."
+        ? state.importMode === "url"
+          ? "Extracting..."
+          : "Saving..."
         : extractionBlocked
           ? "Backend Setup Needed"
         : state.importMode === "photo" && state.pendingPhotoFile && !hasPhotoRecipe

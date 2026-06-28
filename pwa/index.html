@@ -101,12 +101,12 @@
             Recipe URL
             <input id="urlInput" type="url" placeholder="https://example.com/recipe" />
           </label>
-          <p class="hint">Some recipe sites block browser imports. If that happens, paste the page text or HTML below.</p>
+          <p class="hint">The app sends the URL to the secure extraction backend. If a site blocks the backend, paste the recipe card text or HTML below.</p>
         </div>
 
         <label class="field-label">
           Recipe text, HTML, or extracted JSON
-          <textarea id="recipeTextInput" rows="12" placeholder="Paste recipe page text or HTML here. Photo extraction JSON appears here for review."></textarea>
+          <textarea id="recipeTextInput" rows="12" placeholder="Paste recipe page text or HTML here. Extraction JSON appears here for review."></textarea>
         </label>
 
         <div class="form-actions">
@@ -169,6 +169,6 @@
         });
       })();
     </script>
-    <script type="module" src="./src/app.js?v=20260628-extraction4"></script>
+    <script type="module" src="./src/app.js?v=20260628-urlai1"></script>
   </body>
 </html>

@@ -177,6 +177,25 @@ assert.equal(aiExtracted.ingredients[0].unit, "kilogram");
 assert.equal(aiExtracted.instructions.length, 4);
 assert.ok(aiExtracted.description.includes("sun-drenched days"));
 
+const aiURLExtracted = recipeFromExtractedRecipe(
+  {
+    title: "Website Lemon Cake",
+    description: "Bright cake from a recipe page.",
+    servings: 8,
+    language: "en",
+    ingredients: [{ amount: 200, unit: "g", name: "flour", preparationNote: "", originalText: "200 g flour" }],
+    instructions: [{ order: 0, text: "Bake until golden." }],
+    fullText: "Website Lemon Cake",
+    sourceMetadata: { sourceType: "url", sourceName: "Example Kitchen", sourceURL: "https://example.com/cake", notes: "" },
+    warnings: [],
+    confidence: 0.9
+  },
+  "url"
+);
+assert.equal(aiURLExtracted.sourceType, "url");
+assert.equal(aiURLExtracted.sourceMetadata.sourceURL, "https://example.com/cake");
+assert.equal(aiURLExtracted.sourceMetadata.sourceName, "Example Kitchen");
+
 assert.equal(scaleAmount(2, 4, 6), 3);
 assert.equal(formatFraction(1.5), "1 1/2");
 const poundToMetric = convertAmount(1, "pound", "metric");
@@ -300,6 +319,31 @@ await withTemporaryEnv(
 await withTemporaryEnv(
   {
     ALLOWED_ORIGIN: "",
+    MOCK_RECIPE_EXTRACTION: "",
+    OPENAI_API_KEY: ""
+  },
+  async () => {
+    const response = await callExtractionAPI({
+      headers: {
+        host: "localhost:8080",
+        origin: "http://localhost:8080"
+      },
+      body: {
+        sourceType: "url",
+        url: "https://example.com/lemon-pasta"
+      }
+    });
+    assert.equal(response.statusCode, 200);
+    assert.equal(response.payload.mock, true);
+    assert.equal(response.payload.provider.mode, "mock");
+    assert.equal(response.payload.recipe.sourceMetadata.sourceType, "url");
+    assert.equal(response.payload.recipe.sourceMetadata.sourceURL, "https://example.com/lemon-pasta");
+  }
+);
+
+await withTemporaryEnv(
+  {
+    ALLOWED_ORIGIN: "",
     MOCK_RECIPE_EXTRACTION: "false",
     OPENAI_API_KEY: ""
   },
@@ -317,6 +361,74 @@ await withTemporaryEnv(
     });
     assert.equal(response.statusCode, 503);
     assert.match(response.payload.error, /OPENAI_API_KEY/);
+  }
+);
+
+await withTemporaryEnv(
+  {
+    ALLOWED_ORIGIN: "",
+    MOCK_RECIPE_EXTRACTION: "false",
+    OPENAI_API_KEY: "test-key",
+    OPENAI_MODEL: "test-model"
+  },
+  async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url, options = {}) => {
+      assert.equal(String(url), "https://api.openai.com/v1/responses");
+      const request = JSON.parse(options.body);
+      assert.equal(request.model, "test-model");
+      assert.equal(request.input[0].content.length, 1);
+      const prompt = request.input[0].content[0].text;
+      assert.match(prompt, /Extract exactly one recipe from this recipe web page/);
+      assert.match(prompt, /Lots of unrelated blog text/);
+      assert.match(prompt, /sourceMetadata\.sourceType: "url"/);
+
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          output_text: JSON.stringify({
+            title: "Backend URL Pasta",
+            description: "A recipe found by the backend.",
+            servings: 2,
+            language: "en",
+            ingredients: [{ amount: 100, unit: "g", name: "pasta", preparationNote: "", originalText: "100 g pasta" }],
+            instructions: [{ order: 0, text: "Boil the pasta." }],
+            fullText: "Backend URL Pasta\n100 g pasta\nBoil the pasta.",
+            sourceMetadata: {
+              sourceType: "photo",
+              sourceName: "Example Recipes",
+              sourceURL: "https://wrong.example/recipe",
+              notes: ""
+            },
+            warnings: [],
+            confidence: 0.88
+          }),
+          usage: { input_tokens: 100, output_tokens: 50 }
+        })
+      };
+    };
+
+    try {
+      const response = await callExtractionAPI({
+        headers: {
+          host: "cookbook.example.com",
+          origin: "https://cookbook.example.com"
+        },
+        body: {
+          sourceType: "url",
+          url: "https://example.com/backend-url-pasta",
+          pageText: "<html><body>Lots of unrelated blog text. <h2>Ingredients</h2><p>100 g pasta</p><h2>Instructions</h2><p>Boil the pasta.</p></body></html>"
+        }
+      });
+      assert.equal(response.statusCode, 200);
+      assert.equal(response.payload.provider.name, "openai");
+      assert.equal(response.payload.recipe.title, "Backend URL Pasta");
+      assert.equal(response.payload.recipe.sourceMetadata.sourceType, "url");
+      assert.equal(response.payload.recipe.sourceMetadata.sourceURL, "https://example.com/backend-url-pasta");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   }
 );
 

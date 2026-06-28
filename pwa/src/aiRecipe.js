@@ -1,10 +1,11 @@
-import { appConfig } from "./config.js?v=20260628-extraction4";
-import { parseIngredientLine } from "./parser.js?v=20260628-extraction4";
-import { parseUnit } from "./units.js?v=20260628-extraction4";
+import { appConfig } from "./config.js?v=20260628-urlai1";
+import { parseIngredientLine } from "./parser.js?v=20260628-urlai1";
+import { parseUnit } from "./units.js?v=20260628-urlai1";
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.82;
 const PHOTO_IMPORT_LOG_PREFIX = "[Recipe Cookbook photo import]";
+const URL_IMPORT_LOG_PREFIX = "[Recipe Cookbook URL import]";
 
 export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
   const endpoint = String(appConfig.aiExtractionEndpoint || "").trim();
@@ -93,10 +94,93 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
   });
 }
 
+export async function extractRecipeFromURL(urlText, pageText = "", onProgress = () => {}) {
+  const endpoint = String(appConfig.aiExtractionEndpoint || "").trim();
+  const sourceURL = normalizeRecipeURL(urlText);
+  logURLImport("extractRecipeFromURL called", {
+    endpointConfigured: Boolean(endpoint),
+    sourceURL,
+    hasPastedPageText: Boolean(String(pageText || "").trim())
+  });
+
+  if (!endpoint) {
+    logURLImport("blocked before API call", { reason: "missing aiExtractionEndpoint" });
+    throw new Error("URL extraction endpoint is missing. Add a backend endpoint URL in pwa/src/config.js; keep AI API keys on the backend only.");
+  }
+
+  const configurationError = endpointConfigurationError(endpoint, "URL extraction");
+  if (configurationError) {
+    logURLImport("blocked before API call", { reason: "endpoint configuration", endpoint: safeEndpointLabel(endpoint) });
+    throw new Error(configurationError);
+  }
+
+  onProgress("Sending recipe URL to the extraction backend...");
+  logURLImport("sending extraction request", { endpoint: safeEndpointLabel(endpoint), sourceURL });
+  let response;
+  try {
+    response = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        sourceType: "url",
+        url: sourceURL,
+        pageText: String(pageText || "").trim()
+      })
+    });
+  } catch (error) {
+    console.error(URL_IMPORT_LOG_PREFIX, "extraction request failed before response", {
+      endpoint: safeEndpointLabel(endpoint),
+      message: error.message || String(error)
+    });
+    throw new Error(
+      `Could not reach the recipe extraction backend at ${safeEndpointLabel(endpoint)}. Start the local dev server or check the deployed endpoint URL.`
+    );
+  }
+
+  logURLImport("extraction response received", {
+    endpoint: safeEndpointLabel(endpoint),
+    ok: response.ok,
+    status: response.status
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    console.error(URL_IMPORT_LOG_PREFIX, "extraction service returned an error", {
+      status: response.status,
+      message: payload.error || "URL recipe extraction failed."
+    });
+    throw new Error(payload.error || backendFailureMessage(response.status, endpoint, "Recipe extraction"));
+  }
+
+  if (!payload.recipe) {
+    console.error(URL_IMPORT_LOG_PREFIX, "extraction service response did not include recipe JSON");
+    throw new Error("The extraction service did not return recipe JSON.");
+  }
+
+  const isMock = payload.mock || payload.provider?.mode === "mock";
+  onProgress(isMock ? "Mock URL recipe extracted." : "Recipe extracted from URL.");
+  logURLImport("recipe extracted", {
+    provider: payload.provider || null,
+    title: payload.recipe.title || "",
+    ingredientCount: Array.isArray(payload.recipe.ingredients) ? payload.recipe.ingredients.length : 0,
+    instructionCount: Array.isArray(payload.recipe.instructions) ? payload.recipe.instructions.length : 0
+  });
+
+  return recipeFromExtractedRecipe(payload.recipe, "url", {
+    sourceName: isMock ? "Mock URL extraction" : "AI URL extraction",
+    sourceURL,
+    fullText: payload.recipe.fullText || "",
+    language: payload.recipe.language || "unknown",
+    confidence: Number(payload.recipe.confidence) || 0,
+    warnings: Array.isArray(payload.recipe.warnings) ? payload.recipe.warnings : []
+  });
+}
+
 export function recipeFromExtractedRecipe(extracted, sourceType = "photo", metadata = {}) {
+  const defaultSourceName = sourceType === "url" ? "AI URL extraction" : "AI photo extraction";
   const sourceMetadata = {
     sourceURL: extracted?.sourceMetadata?.sourceURL || metadata.sourceURL || "",
-    sourceName: extracted?.sourceMetadata?.sourceName || metadata.sourceName || "AI photo extraction",
+    sourceName: extracted?.sourceMetadata?.sourceName || metadata.sourceName || defaultSourceName,
     author: "",
     originalImageURL: "",
     language: extracted?.language || metadata.language || "unknown",
@@ -134,6 +218,8 @@ export function recipeFromExtractedRecipe(extracted, sourceType = "photo", metad
 }
 
 export function recipeToEditableJSON(recipe) {
+  const sourceType = recipe.sourceType || recipe.sourceMetadata?.sourceType || "photo";
+  const defaultSourceName = sourceType === "url" ? "AI URL extraction" : "AI photo extraction";
   return {
     title: recipe.title,
     description: recipe.description,
@@ -152,8 +238,8 @@ export function recipeToEditableJSON(recipe) {
     })),
     fullText: recipe.sourceMetadata?.fullText || "",
     sourceMetadata: {
-      sourceType: "photo",
-      sourceName: recipe.sourceMetadata?.sourceName || "AI photo extraction",
+      sourceType,
+      sourceName: recipe.sourceMetadata?.sourceName || defaultSourceName,
       sourceURL: recipe.sourceMetadata?.sourceURL || "",
       notes: recipe.sourceMetadata?.notes || ""
     },
@@ -229,6 +315,20 @@ function logPhotoImport(message, details = {}) {
   console.info(PHOTO_IMPORT_LOG_PREFIX, message, details);
 }
 
+function logURLImport(message, details = {}) {
+  console.info(URL_IMPORT_LOG_PREFIX, message, details);
+}
+
+function normalizeRecipeURL(urlText) {
+  try {
+    const url = new URL(String(urlText || "").trim());
+    if (!["http:", "https:"].includes(url.protocol)) throw new Error("Unsupported recipe URL.");
+    return url.href;
+  } catch {
+    throw new Error("Enter a valid recipe URL that starts with http or https.");
+  }
+}
+
 function safeEndpointLabel(endpoint) {
   try {
     const url = new URL(endpoint, typeof window === "undefined" ? "http://localhost" : window.location.href);
@@ -238,22 +338,22 @@ function safeEndpointLabel(endpoint) {
   }
 }
 
-function backendFailureMessage(status, endpoint) {
+function backendFailureMessage(status, endpoint, sourceLabel = "Photo extraction") {
   const label = safeEndpointLabel(endpoint);
   if (status === 404) {
-    return `Photo extraction backend was not found at ${label}. If the PWA is on a static host, deploy the backend separately and update pwa/src/config.js.`;
+    return `${sourceLabel} backend was not found at ${label}. If the PWA is on a static host, deploy the backend separately and update pwa/src/config.js.`;
   }
   if (status === 503) {
-    return "Photo extraction backend is unavailable. Check that the backend is running and its AI provider environment variables are configured.";
+    return `${sourceLabel} backend is unavailable. Check that the backend is running and its AI provider environment variables are configured.`;
   }
-  return `Photo extraction backend returned HTTP ${status}. Check the backend logs for details.`;
+  return `${sourceLabel} backend returned HTTP ${status}. Check the backend logs for details.`;
 }
 
-function endpointConfigurationError(endpoint) {
+function endpointConfigurationError(endpoint, sourceLabel = "Photo extraction") {
   if (typeof window === "undefined" || !window.location) return "";
 
   if (window.location.protocol === "file:") {
-    return "Open Cookbook through the local dev server before using photo extraction: run npm start, then go to http://localhost:8080.";
+    return `Open Cookbook through the local dev server before using ${sourceLabel.toLowerCase()}: run npm start, then go to http://localhost:8080.`;
   }
 
   let endpointURL;
@@ -266,7 +366,7 @@ function endpointConfigurationError(endpoint) {
   const pageHost = window.location.hostname.toLowerCase();
   const endpointHost = endpointURL.hostname.toLowerCase();
   if (isGitHubPagesHost(pageHost) && isGitHubPagesHost(endpointHost)) {
-    return `Photo extraction needs a deployed backend. GitHub Pages only hosts static files, so ${safeEndpointLabel(endpoint)} cannot run api/extract-recipe.js or use OPENAI_API_KEY. Deploy the backend to a Node/serverless host, then set aiExtractionEndpoint in pwa/src/config.js to that HTTPS URL.`;
+    return `${sourceLabel} needs a deployed backend. GitHub Pages only hosts static files, so ${safeEndpointLabel(endpoint)} cannot run api/extract-recipe.js or use OPENAI_API_KEY. Deploy the backend to a Node/serverless host, then set aiExtractionEndpoint in pwa/src/config.js to that HTTPS URL.`;
   }
 
   return "";

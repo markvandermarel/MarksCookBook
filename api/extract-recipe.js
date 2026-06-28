@@ -1,6 +1,12 @@
 const OPENAI_RESPONSES_URL = "https://api.openai.com/v1/responses";
 const LOG_PREFIX = "[recipe-extraction-api]";
 const MAX_IMAGE_DATA_URL_LENGTH = 9_000_000;
+const MAX_REQUEST_BODY_LENGTH = MAX_IMAGE_DATA_URL_LENGTH + 350_000;
+const MAX_URL_LENGTH = 2_048;
+const MAX_PASTED_SOURCE_LENGTH = 300_000;
+const MAX_FETCHED_PAGE_LENGTH = 1_500_000;
+const MAX_MODEL_SOURCE_CHARS = 90_000;
+const PAGE_FETCH_TIMEOUT_MS = 15_000;
 
 const recipeExtractionSchema = {
   type: "object",
@@ -48,7 +54,7 @@ const recipeExtractionSchema = {
           },
           originalText: {
             type: "string",
-            description: "Full original ingredient line as read from the photo."
+            description: "Full original ingredient line as read from the source."
           }
         }
       }
@@ -72,7 +78,7 @@ const recipeExtractionSchema = {
     },
     fullText: {
       type: "string",
-      description: "Clean full recipe text reconstructed from the image, excluding unrelated page labels where possible."
+      description: "Clean full recipe text reconstructed from the source, excluding unrelated page labels where possible."
     },
     sourceMetadata: {
       type: "object",
@@ -81,7 +87,7 @@ const recipeExtractionSchema = {
       properties: {
         sourceType: {
           type: "string",
-          enum: ["photo"]
+          enum: ["photo", "url"]
         },
         sourceName: {
           type: "string"
@@ -107,7 +113,7 @@ const recipeExtractionSchema = {
   }
 };
 
-const extractionPrompt = `
+const photoExtractionPrompt = `
 Extract one cookbook recipe from this photo.
 
 The photo may contain English, German, or Dutch text. Preserve the recipe language in title, description, ingredients, and instructions.
@@ -122,6 +128,32 @@ Separate the recipe into:
 
 If a field is not visible, use an empty string, empty array, or null. Do not invent missing ingredients or steps.
 `;
+
+function urlExtractionPrompt({ sourceURL, sourceName, sourceText }) {
+  return `
+Extract exactly one recipe from this recipe web page.
+
+The page content may include navigation, advertisements, comments, ratings, related recipes, author biographies, newsletter boxes, SEO text, nutrition tables, and article content. Ignore all of that unless it is part of the actual recipe.
+
+Prefer the main recipe card or schema.org Recipe data when present. If the page contains multiple recipes, extract the primary recipe matching the page title or canonical recipe card. Preserve the recipe language in title, description, ingredients, and instructions.
+
+Separate the recipe into:
+- title: the actual recipe title. Do not include site names, category labels, or SEO suffixes.
+- description: short recipe introduction or serving note, not ingredients and not method steps.
+- servings: number of portions/people if available.
+- ingredients: only the measured ingredient list for the main recipe. Keep originalText faithful, put only the ingredient name in name, and put preparation details in preparationNote.
+- instructions: cooking method steps only. Split numbered or paragraph instructions into individual steps. Do not include notes, nutrition, equipment, or ingredient text as steps.
+- fullText: reconstructed readable recipe text for the main recipe only.
+- sourceMetadata.sourceType: "url"
+- sourceMetadata.sourceName: "${escapePromptText(sourceName)}"
+- sourceMetadata.sourceURL: "${escapePromptText(sourceURL)}"
+
+If a field is missing, use an empty string, empty array, or null. Do not invent missing ingredients or steps.
+
+Recipe page content:
+${sourceText}
+`;
+}
 
 export default async function handler(req, res) {
   setCORS(req, res);
@@ -148,20 +180,22 @@ export default async function handler(req, res) {
     assertOriginAllowed(req);
 
     const body = await readJSONBody(req);
-    const imageDataUrl = body.imageDataUrl || body?.image?.dataUrl;
-    if (!isAllowedImageDataUrl(imageDataUrl)) {
-      throw new PublicError("Send a JPEG, PNG, or WebP image as a base64 data URL.", 400);
-    }
-    if (imageDataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
-      throw new PublicError("The uploaded photo is too large. Try a closer crop or a smaller image.", 413);
-    }
+    const requestContext = buildRequestContext(body);
 
     const mockMode = mockExtractionMode(req);
     if (mockMode.enabled) {
-      const recipe = mockExtractedRecipe({ fileName: body.fileName || "", reason: mockMode.reason });
+      const recipe = mockExtractedRecipe({
+        fileName: requestContext.fileName || "",
+        reason: mockMode.reason,
+        sourceName: requestContext.sourceName || "",
+        sourceType: requestContext.sourceType,
+        sourceURL: requestContext.sourceURL || ""
+      });
       console.info(LOG_PREFIX, "using mock extraction", {
         reason: mockMode.reason,
-        fileName: body.fileName || ""
+        sourceType: requestContext.sourceType,
+        sourceURL: requestContext.sourceURL || "",
+        fileName: requestContext.fileName || ""
       });
       sendJSON(res, 200, {
         recipe,
@@ -184,55 +218,26 @@ export default async function handler(req, res) {
     }
 
     const model = process.env.OPENAI_MODEL || "gpt-5.4-mini";
+    const openAIInput = await buildOpenAIInput(requestContext);
     console.info(LOG_PREFIX, "calling OpenAI responses API", {
       model,
-      imageDataUrlLength: imageDataUrl.length
+      sourceType: requestContext.sourceType,
+      sourceURL: requestContext.sourceURL || "",
+      ...openAIInput.diagnostics
     });
-    const response = await fetch(OPENAI_RESPONSES_URL, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        model,
-        input: [
-          {
-            role: "user",
-            content: [
-              { type: "input_text", text: extractionPrompt },
-              { type: "input_image", image_url: imageDataUrl }
-            ]
-          }
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: "recipe_extraction",
-            schema: recipeExtractionSchema,
-            strict: true
-          }
-        },
-        max_output_tokens: 5000
-      })
+    const payload = await callOpenAIRecipeExtraction({
+      apiKey,
+      model,
+      content: openAIInput.content
     });
-
-    const payload = await response.json().catch(() => ({}));
-    console.info(LOG_PREFIX, "OpenAI response received", {
-      ok: response.ok,
-      status: response.status,
-      usage: payload.usage || null
-    });
-    if (!response.ok) {
-      const message = payload?.error?.message || "OpenAI recipe extraction failed.";
-      throw new PublicError(message, response.status);
-    }
 
     const outputText = extractOutputText(payload);
     if (!outputText) throw new PublicError("OpenAI did not return recipe JSON.", 502);
 
-    const recipe = parseRecipeOutput(outputText);
+    const recipe = normalizeRecipeOutput(parseRecipeOutput(outputText), requestContext);
     console.info(LOG_PREFIX, "recipe extraction succeeded", {
+      sourceType: requestContext.sourceType,
+      sourceURL: requestContext.sourceURL || "",
       title: recipe.title || "",
       ingredientCount: Array.isArray(recipe.ingredients) ? recipe.ingredients.length : 0,
       instructionCount: Array.isArray(recipe.instructions) ? recipe.instructions.length : 0
@@ -280,6 +285,224 @@ function allowedOrigins() {
     .filter(Boolean);
 }
 
+function buildRequestContext(body) {
+  const explicitSourceType = String(body.sourceType || body.type || "").trim().toLowerCase();
+  const imageDataUrl = body.imageDataUrl || body?.image?.dataUrl;
+
+  if (explicitSourceType === "url" || (!imageDataUrl && (body.url || body.sourceURL))) {
+    return buildURLRequestContext(body);
+  }
+
+  if (explicitSourceType && explicitSourceType !== "photo") {
+    throw new PublicError("sourceType must be either photo or url.", 400);
+  }
+
+  if (!imageDataUrl) {
+    throw new PublicError("Send either a recipe photo or a recipe page URL.", 400);
+  }
+
+  if (!isAllowedImageDataUrl(imageDataUrl)) {
+    throw new PublicError("Send a JPEG, PNG, or WebP image as a base64 data URL.", 400);
+  }
+  if (imageDataUrl.length > MAX_IMAGE_DATA_URL_LENGTH) {
+    throw new PublicError("The uploaded photo is too large. Try a closer crop or a smaller image.", 413);
+  }
+
+  return {
+    sourceType: "photo",
+    imageDataUrl,
+    fileName: String(body.fileName || "")
+  };
+}
+
+function buildURLRequestContext(body) {
+  const rawURL = String(body.url || body.sourceURL || "").trim();
+  if (!rawURL) throw new PublicError("Send a recipe page URL.", 400);
+  if (rawURL.length > MAX_URL_LENGTH) throw new PublicError("The recipe URL is too long.", 400);
+
+  let sourceURL;
+  try {
+    sourceURL = new URL(rawURL);
+  } catch {
+    throw new PublicError("Send a valid recipe page URL.", 400);
+  }
+
+  if (!["http:", "https:"].includes(sourceURL.protocol)) {
+    throw new PublicError("Recipe URL imports only support http and https pages.", 400);
+  }
+  if (isBlockedSourceHost(sourceURL.hostname)) {
+    throw new PublicError("Recipe URL imports cannot fetch local or private network addresses.", 400);
+  }
+
+  const pastedSourceText = String(body.pageText ?? body.html ?? body.text ?? "").trim();
+  if (pastedSourceText.length > MAX_PASTED_SOURCE_LENGTH) {
+    throw new PublicError("The pasted recipe page text is too large. Paste the recipe card or main recipe section instead.", 413);
+  }
+
+  return {
+    sourceType: "url",
+    sourceURL: sourceURL.href,
+    sourceName: sourceNameFromURL(sourceURL),
+    pageText: pastedSourceText
+  };
+}
+
+async function buildOpenAIInput(context) {
+  if (context.sourceType === "photo") {
+    return {
+      content: [
+        { type: "input_text", text: photoExtractionPrompt },
+        { type: "input_image", image_url: context.imageDataUrl }
+      ],
+      diagnostics: {
+        imageDataUrlLength: context.imageDataUrl.length
+      }
+    };
+  }
+
+  const source = await buildURLSourceText(context);
+  return {
+    content: [
+      {
+        type: "input_text",
+        text: urlExtractionPrompt({
+          sourceURL: context.sourceURL,
+          sourceName: context.sourceName,
+          sourceText: source.text
+        })
+      }
+    ],
+    diagnostics: {
+      sourceTextLength: source.text.length,
+      sourceTextOrigin: source.origin
+    }
+  };
+}
+
+async function buildURLSourceText(context) {
+  if (context.pageText) {
+    return {
+      origin: "request",
+      text: prepareSourceTextForModel(context.pageText)
+    };
+  }
+
+  const fetched = await fetchRecipePage(context.sourceURL);
+  return {
+    origin: fetched.origin,
+    text: prepareSourceTextForModel(fetched.text)
+  };
+}
+
+async function fetchRecipePage(sourceURL) {
+  const attempts = [
+    { origin: "source", url: sourceURL },
+    { origin: "reader", url: readerURLFor(sourceURL) }
+  ];
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    try {
+      const page = await fetchTextPage(attempt.url);
+      if (page.text.trim().length < 80) {
+        throw new Error("The page response did not include enough readable text.");
+      }
+      return {
+        ...page,
+        origin: attempt.origin
+      };
+    } catch (error) {
+      lastError = error;
+      console.warn(LOG_PREFIX, "recipe page fetch attempt failed", {
+        origin: attempt.origin,
+        message: error.message || String(error)
+      });
+    }
+  }
+
+  throw new PublicError(
+    `The recipe page could not be loaded by the extraction backend. Paste the page text or HTML and try again. ${lastError?.message || ""}`.trim(),
+    502
+  );
+}
+
+async function fetchTextPage(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), PAGE_FETCH_TIMEOUT_MS);
+
+  try {
+    const response = await fetch(url, {
+      redirect: "follow",
+      signal: controller.signal,
+      headers: {
+        Accept: "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5",
+        "User-Agent": "RecipeCookbookBot/1.0 (+https://example.invalid/recipe-cookbook)"
+      }
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+    const contentLength = Number(response.headers?.get?.("content-length") || 0);
+    if (contentLength > MAX_FETCHED_PAGE_LENGTH * 4) {
+      throw new Error("The recipe page is too large to import directly.");
+    }
+
+    const rawText = await response.text();
+    return {
+      contentType: response.headers?.get?.("content-type") || "",
+      finalURL: response.url || url,
+      text: rawText.slice(0, MAX_FETCHED_PAGE_LENGTH)
+    };
+  } catch (error) {
+    if (error?.name === "AbortError") {
+      throw new Error("The recipe page request timed out.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function callOpenAIRecipeExtraction({ apiKey, model, content }) {
+  const response = await fetch(OPENAI_RESPONSES_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model,
+      input: [
+        {
+          role: "user",
+          content
+        }
+      ],
+      text: {
+        format: {
+          type: "json_schema",
+          name: "recipe_extraction",
+          schema: recipeExtractionSchema,
+          strict: true
+        }
+      },
+      max_output_tokens: 5000
+    })
+  });
+
+  const payload = await response.json().catch(() => ({}));
+  console.info(LOG_PREFIX, "OpenAI response received", {
+    ok: response.ok,
+    status: response.status,
+    usage: payload.usage || null
+  });
+  if (!response.ok) {
+    const message = payload?.error?.message || "OpenAI recipe extraction failed.";
+    throw new PublicError(message, response.status);
+  }
+
+  return payload;
+}
+
 async function readJSONBody(req) {
   if (Buffer.isBuffer(req.body)) {
     assertBodySize(req.body.length);
@@ -316,7 +539,7 @@ function parseJSONBody(text) {
 }
 
 function assertBodySize(byteLength) {
-  if (byteLength > MAX_IMAGE_DATA_URL_LENGTH + 200_000) {
+  if (byteLength > MAX_REQUEST_BODY_LENGTH) {
     throw new PublicError("The extraction request is too large. Try a closer crop or a smaller image.", 413);
   }
 }
@@ -340,6 +563,186 @@ function parseRecipeOutput(outputText) {
   } catch {
     throw new PublicError("AI provider returned invalid recipe JSON.", 502);
   }
+}
+
+function normalizeRecipeOutput(recipe, context) {
+  if (!recipe || typeof recipe !== "object" || Array.isArray(recipe)) {
+    throw new PublicError("AI provider returned invalid recipe JSON.", 502);
+  }
+
+  const sourceMetadata = recipe.sourceMetadata && typeof recipe.sourceMetadata === "object" ? recipe.sourceMetadata : {};
+  recipe.sourceMetadata = {
+    sourceType: context.sourceType,
+    sourceName:
+      normalizeSingleLine(sourceMetadata.sourceName) ||
+      context.sourceName ||
+      (context.sourceType === "url" ? "AI URL extraction" : "AI photo extraction"),
+    sourceURL: context.sourceType === "url" ? context.sourceURL : normalizeSingleLine(sourceMetadata.sourceURL),
+    notes: normalizeSingleLine(sourceMetadata.notes)
+  };
+
+  if (!Array.isArray(recipe.ingredients)) recipe.ingredients = [];
+  if (!Array.isArray(recipe.instructions)) recipe.instructions = [];
+  if (!Array.isArray(recipe.warnings)) recipe.warnings = [];
+  recipe.confidence = Number.isFinite(Number(recipe.confidence)) ? Number(recipe.confidence) : 0;
+
+  return recipe;
+}
+
+function prepareSourceTextForModel(source) {
+  const raw = String(source || "");
+  const structuredData = extractStructuredDataSnippets(raw);
+  const readableText = looksLikeHTML(raw) ? htmlToPromptText(raw) : decodeEntities(raw);
+  const combined = [
+    structuredData ? `Structured recipe data candidates:\n${structuredData}` : "",
+    `Readable page text:\n${readableText}`
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+
+  const cleaned = normalizePromptText(combined);
+  if (!cleaned) throw new PublicError("The recipe page did not include readable text.", 400);
+  return truncateSourceForModel(cleaned);
+}
+
+function extractStructuredDataSnippets(source) {
+  const snippets = [...String(source).matchAll(/<script[^>]+type=["'][^"']*ld\+json[^"']*["'][^>]*>([\s\S]*?)<\/script>/gi)]
+    .map((match) => normalizePromptText(decodeEntities(match[1])))
+    .filter(Boolean);
+  const recipeSnippets = snippets.filter((snippet) => /"@type"\s*:\s*"?Recipe|recipeIngredient|recipeInstructions/i.test(snippet));
+  return (recipeSnippets.length ? recipeSnippets : snippets.slice(0, 2))
+    .slice(0, 4)
+    .map((snippet) => snippet.slice(0, 24_000))
+    .join("\n\n");
+}
+
+function htmlToPromptText(html) {
+  return decodeEntities(html)
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<svg[\s\S]*?<\/svg>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|li|h\d|div|section|article|tr|td|th|ul|ol)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\n{3,}/g, "\n\n");
+}
+
+function truncateSourceForModel(text) {
+  if (text.length <= MAX_MODEL_SOURCE_CHARS) return text;
+
+  const windows = [{ start: 0, end: 14_000 }];
+  const patterns = [
+    /recipeIngredient/gi,
+    /recipeInstructions/gi,
+    /^#{0,4}\s*recipe\b/gim,
+    /^#{0,4}\s*ingredients?\b/gim,
+    /^#{0,4}\s*(instructions?|directions?|method|preparation|steps)\b/gim,
+    /^#{0,4}\s*(zutaten|zubereitung|anleitung|bereiding|ingredienten|werkwijze|stappen)\b/gim,
+    /\bserves?\s+\d+/gi,
+    /\bservings?\s*:?\s*\d+/gi
+  ];
+
+  for (const pattern of patterns) {
+    pattern.lastIndex = 0;
+    let match;
+    let count = 0;
+    while ((match = pattern.exec(text)) && count < 8) {
+      const start = Math.max(0, match.index - 8_000);
+      windows.push({ start, end: Math.min(text.length, match.index + 24_000) });
+      count += 1;
+    }
+  }
+
+  const merged = mergeWindows(windows).sort((left, right) => left.start - right.start);
+  const parts = [];
+  let used = 0;
+  for (const window of merged) {
+    if (used >= MAX_MODEL_SOURCE_CHARS) break;
+    const separator = parts.length ? "\n\n[...page content omitted...]\n\n" : "";
+    const available = MAX_MODEL_SOURCE_CHARS - used - separator.length;
+    if (available <= 0) break;
+    const snippet = text.slice(window.start, window.end).slice(0, available);
+    parts.push(`${separator}${snippet}`);
+    used += separator.length + snippet.length;
+  }
+
+  return parts.join("").slice(0, MAX_MODEL_SOURCE_CHARS);
+}
+
+function mergeWindows(windows) {
+  const sorted = windows
+    .filter((window) => window.end > window.start)
+    .sort((left, right) => left.start - right.start);
+  const merged = [];
+
+  for (const window of sorted) {
+    const previous = merged[merged.length - 1];
+    if (previous && window.start <= previous.end + 1_000) {
+      previous.end = Math.max(previous.end, window.end);
+    } else {
+      merged.push({ ...window });
+    }
+  }
+
+  return merged;
+}
+
+function normalizePromptText(text) {
+  return String(text || "")
+    .replace(/\r/g, "\n")
+    .replace(/\t/g, " ")
+    .replace(/[\u00a0 ]+/g, " ")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+function decodeEntities(text) {
+  return String(text || "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+function looksLikeHTML(text) {
+  return /<\/?[a-z][\s\S]*>/i.test(text);
+}
+
+function readerURLFor(sourceURL) {
+  return `https://r.jina.ai/http://${sourceURL}`;
+}
+
+function sourceNameFromURL(url) {
+  return url.hostname.replace(/^www\./i, "");
+}
+
+function isBlockedSourceHost(hostname) {
+  const host = String(hostname || "").toLowerCase();
+  return (
+    host === "localhost" ||
+    host.endsWith(".localhost") ||
+    host === "::1" ||
+    host === "[::1]" ||
+    host === "0.0.0.0" ||
+    host === "169.254.169.254" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[0-1])\./.test(host)
+  );
+}
+
+function normalizeSingleLine(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function escapePromptText(value) {
+  return normalizeSingleLine(value).replace(/["\\]/g, "\\$&").slice(0, 300);
 }
 
 function sendJSON(res, statusCode, payload) {
@@ -390,8 +793,15 @@ function isLocalHost(host) {
   return /^(localhost|127\.0\.0\.1|\[::1\])(?::\d+)?$/i.test(host);
 }
 
-function mockExtractedRecipe({ fileName, reason }) {
-  const sourceNote = fileName ? `Mocked from ${fileName}.` : "Mocked from the uploaded photo.";
+function mockExtractedRecipe({ fileName, reason, sourceName = "", sourceType = "photo", sourceURL = "" }) {
+  const isURL = sourceType === "url";
+  const sourceNote = isURL
+    ? sourceURL
+      ? `Mocked from ${sourceURL}.`
+      : "Mocked from the recipe URL."
+    : fileName
+      ? `Mocked from ${fileName}.`
+      : "Mocked from the uploaded photo.";
   return {
     title: "Mock Lemon Pasta",
     description: "A local development mock recipe returned by the secure extraction backend.",
@@ -444,14 +854,16 @@ function mockExtractedRecipe({ fileName, reason }) {
     fullText:
       "Mock Lemon Pasta\nServes 4\n200 g spaghetti\n2 tbsp olive oil\n1 lemon, zested and juiced\nsalt and black pepper, to taste\nCook the spaghetti in salted water until al dente. Toss with lemon oil and season.",
     sourceMetadata: {
-      sourceType: "photo",
-      sourceName: "Mock photo extraction",
-      sourceURL: "",
+      sourceType,
+      sourceName: isURL ? sourceName || "Mock URL extraction" : "Mock photo extraction",
+      sourceURL: isURL ? sourceURL : "",
       notes: `${sourceNote} ${reason} No AI/OCR provider was called.`
     },
     warnings: [
       "Mock extraction was used for local testing.",
-      "The uploaded photo was not analyzed. Configure OPENAI_API_KEY on the backend for real extraction."
+      isURL
+        ? "The recipe page was not analyzed. Configure OPENAI_API_KEY on the backend for real URL extraction."
+        : "The uploaded photo was not analyzed. Configure OPENAI_API_KEY on the backend for real extraction."
     ],
     confidence: 0
   };
