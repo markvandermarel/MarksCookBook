@@ -26,6 +26,8 @@ Open:
 http://localhost:8080
 ```
 
+Do not open `pwa/index.html` directly from the filesystem. Browser security blocks the module imports and the local backend when the app is loaded from `file://`, so buttons may appear unresponsive. Use `npm start` and the `http://localhost:8080` URL instead.
+
 `npm start` serves both the static PWA and the local extraction backend:
 
 ```text
@@ -140,6 +142,8 @@ For same-origin deployments, keep the default `/api/extract-recipe`. For GitHub 
 GitHub Pages: static PWA files in /pwa
 Vercel or similar: /api/extract-recipe.js
 ```
+
+GitHub Pages cannot run `api/extract-recipe.js` and cannot read `OPENAI_API_KEY`. If `aiExtractionEndpoint` is left as `/api/extract-recipe` on GitHub Pages, photo extraction will not call the AI provider. Deploy the backend to a serverless/Node host first, set `OPENAI_API_KEY` there, then update `pwa/src/config.js` with that backend's HTTPS URL.
 
 ### Mock Extraction
 

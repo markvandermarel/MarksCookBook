@@ -131,6 +131,43 @@
 
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
-    <script type="module" src="./src/app.js?v=20260626-extraction2"></script>
+    <script>
+      (() => {
+        if (window.location.protocol !== "file:") return;
+
+        const message = "Open Cookbook through the local dev server: run npm start in the project folder, then go to http://localhost:8080. Browser security blocks the app modules and backend when index.html is opened as a file.";
+
+        function showLocalFileMessage(event) {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const toast = document.querySelector("#toast");
+          if (toast) {
+            toast.textContent = message;
+            toast.classList.add("visible");
+          }
+
+          const recipeList = document.querySelector("#recipeList");
+          if (recipeList && !document.querySelector("#localFileNotice")) {
+            const panel = document.createElement("div");
+            panel.id = "localFileNotice";
+            panel.className = "state-panel error";
+            panel.innerHTML = `
+              <div class="state-icon" aria-hidden="true">!</div>
+              <h2>Use the local server</h2>
+              <p>${message}</p>
+            `;
+            recipeList.replaceChildren(panel);
+          }
+        }
+
+        document.addEventListener("DOMContentLoaded", () => {
+          document.querySelectorAll("button").forEach((button) => {
+            button.addEventListener("click", showLocalFileMessage, true);
+          });
+        });
+      })();
+    </script>
+    <script type="module" src="./src/app.js?v=20260628-extraction3"></script>
   </body>
 </html>

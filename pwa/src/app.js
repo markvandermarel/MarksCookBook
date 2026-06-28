@@ -1,7 +1,7 @@
-import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260626-extraction2";
-import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260626-extraction2";
-import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260626-extraction2";
-import { formatIngredient } from "./units.js?v=20260626-extraction2";
+import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-extraction3";
+import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-extraction3";
+import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260628-extraction3";
+import { formatIngredient } from "./units.js?v=20260628-extraction3";
 
 const state = {
   recipes: [],

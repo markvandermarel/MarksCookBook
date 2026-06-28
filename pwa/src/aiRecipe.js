@@ -1,6 +1,6 @@
-import { appConfig } from "./config.js?v=20260626-extraction2";
-import { parseIngredientLine } from "./parser.js?v=20260626-extraction2";
-import { parseUnit } from "./units.js?v=20260626-extraction2";
+import { appConfig } from "./config.js?v=20260628-extraction3";
+import { parseIngredientLine } from "./parser.js?v=20260628-extraction3";
+import { parseUnit } from "./units.js?v=20260628-extraction3";
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.82;
@@ -18,6 +18,12 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
   if (!endpoint) {
     logPhotoImport("blocked before API call", { reason: "missing aiExtractionEndpoint" });
     throw new Error("Photo extraction endpoint is missing. Add a backend endpoint URL in pwa/src/config.js; keep AI API keys on the backend only.");
+  }
+
+  const configurationError = endpointConfigurationError(endpoint);
+  if (configurationError) {
+    logPhotoImport("blocked before API call", { reason: "endpoint configuration", endpoint: safeEndpointLabel(endpoint) });
+    throw new Error(configurationError);
   }
 
   onProgress("Preparing photo for secure extraction...");
@@ -241,4 +247,31 @@ function backendFailureMessage(status, endpoint) {
     return "Photo extraction backend is unavailable. Check that the backend is running and its AI provider environment variables are configured.";
   }
   return `Photo extraction backend returned HTTP ${status}. Check the backend logs for details.`;
+}
+
+function endpointConfigurationError(endpoint) {
+  if (typeof window === "undefined" || !window.location) return "";
+
+  if (window.location.protocol === "file:") {
+    return "Open Cookbook through the local dev server before using photo extraction: run npm start, then go to http://localhost:8080.";
+  }
+
+  let endpointURL;
+  try {
+    endpointURL = new URL(endpoint, window.location.href);
+  } catch {
+    return "";
+  }
+
+  const pageHost = window.location.hostname.toLowerCase();
+  const endpointHost = endpointURL.hostname.toLowerCase();
+  if (isGitHubPagesHost(pageHost) && isGitHubPagesHost(endpointHost)) {
+    return `Photo extraction needs a deployed backend. GitHub Pages only hosts static files, so ${safeEndpointLabel(endpoint)} cannot run api/extract-recipe.js or use OPENAI_API_KEY. Deploy the backend to a Node/serverless host, then set aiExtractionEndpoint in pwa/src/config.js to that HTTPS URL.`;
+  }
+
+  return "";
+}
+
+function isGitHubPagesHost(hostname) {
+  return hostname === "github.io" || hostname.endsWith(".github.io");
 }
