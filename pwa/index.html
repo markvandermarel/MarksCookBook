@@ -92,6 +92,7 @@
           </label>
           <img id="photoPreview" class="photo-preview hidden" alt="Selected recipe page" />
           <p id="photoStatus" class="hint" aria-live="polite">After you choose a photo, the app sends it to the secure extraction backend. The photo is not stored by the PWA.</p>
+          <div id="photoError" class="inline-alert error hidden" role="alert"></div>
           <p class="hint">The extraction service returns structured recipe JSON for review before saving.</p>
         </div>
 
@@ -168,6 +169,6 @@
         });
       })();
     </script>
-    <script type="module" src="./src/app.js?v=20260628-extraction3"></script>
+    <script type="module" src="./src/app.js?v=20260628-extraction4"></script>
   </body>
 </html>

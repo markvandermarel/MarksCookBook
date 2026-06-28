@@ -1,6 +1,6 @@
-import { appConfig } from "./config.js?v=20260628-extraction3";
-import { parseIngredientLine } from "./parser.js?v=20260628-extraction3";
-import { parseUnit } from "./units.js?v=20260628-extraction3";
+import { appConfig } from "./config.js?v=20260628-extraction4";
+import { parseIngredientLine } from "./parser.js?v=20260628-extraction4";
+import { parseUnit } from "./units.js?v=20260628-extraction4";
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.82;

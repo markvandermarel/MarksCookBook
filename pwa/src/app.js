@@ -1,7 +1,7 @@
-import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-extraction3";
-import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-extraction3";
-import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260628-extraction3";
-import { formatIngredient } from "./units.js?v=20260628-extraction3";
+import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-extraction4";
+import { extractRecipeFromPhoto, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-extraction4";
+import { extractRecipeFromHTML, importRecipeFromURL, parseRecipeText } from "./parser.js?v=20260628-extraction4";
+import { formatIngredient } from "./units.js?v=20260628-extraction4";
 
 const state = {
   recipes: [],
@@ -17,6 +17,8 @@ const state = {
   pendingPhotoRecipe: null,
   isLoading: true,
   loadError: "",
+  photoImportError: "",
+  isPhotoBackendBlocked: false,
   isPhotoExtracting: false,
   isImportSaving: false,
   objectURLs: new Set()
@@ -36,6 +38,7 @@ const elements = {
   photoInput: document.querySelector("#photoInput"),
   photoPreview: document.querySelector("#photoPreview"),
   photoStatus: document.querySelector("#photoStatus"),
+  photoError: document.querySelector("#photoError"),
   urlInput: document.querySelector("#urlInput"),
   recipeTextInput: document.querySelector("#recipeTextInput"),
   parseRecipeButton: document.querySelector("#parseRecipeButton"),
@@ -92,6 +95,7 @@ function bindEvents() {
     if (!file) return;
     state.pendingPhotoFile = file;
     state.pendingPhotoRecipe = null;
+    clearPhotoError();
     const previewURL = URL.createObjectURL(file);
     state.objectURLs.add(previewURL);
     elements.photoPreview.src = previewURL;
@@ -111,8 +115,7 @@ function bindEvents() {
       console.error("[Recipe Cookbook photo import] extraction failed", {
         message: error.message || String(error)
       });
-      elements.photoStatus.textContent = error.message || "Photo extraction failed.";
-      toast(elements.photoStatus.textContent);
+      showPhotoError(error.message || "Photo extraction failed.");
     }
   });
 }
@@ -128,6 +131,7 @@ function openImportDialog(mode) {
   elements.photoPreview.classList.add("hidden");
   elements.photoPreview.removeAttribute("src");
   elements.photoStatus.textContent = "After you choose a photo, the app sends it to the secure extraction backend. The photo is not stored by the PWA.";
+  clearPhotoError();
   elements.photoInput.value = "";
   state.pendingPhotoFile = null;
   elements.urlInput.value = "";
@@ -150,6 +154,7 @@ async function parseAndSaveImport() {
 
   try {
     state.isImportSaving = true;
+    clearPhotoError();
     updateImportButtonState();
 
     if (state.importMode === "photo") {
@@ -190,7 +195,9 @@ async function parseAndSaveImport() {
       mode: state.importMode,
       message: error.message || String(error)
     });
-    toast(error.message || "The recipe could not be imported.");
+    const message = error.message || "The recipe could not be imported.";
+    if (state.importMode === "photo") showPhotoError(message);
+    else toast(message);
   } finally {
     state.isImportSaving = false;
     updateImportButtonState();
@@ -254,16 +261,42 @@ async function extractSelectedPhotoRecipe() {
 }
 
 function updateImportButtonState() {
-  elements.parseRecipeButton.disabled = state.isPhotoExtracting || state.isImportSaving;
+  const hasEditableText = Boolean(elements.recipeTextInput.value.trim());
+  const extractionBlocked = state.importMode === "photo" && state.isPhotoBackendBlocked && !hasEditableText;
+  elements.parseRecipeButton.disabled = state.isPhotoExtracting || state.isImportSaving || extractionBlocked;
   const hasPhotoRecipe = Boolean(state.pendingPhotoRecipe || elements.recipeTextInput.value.trim());
   elements.parseRecipeButton.textContent =
     state.isPhotoExtracting
       ? "Extracting..."
       : state.isImportSaving
         ? "Saving..."
+        : extractionBlocked
+          ? "Backend Setup Needed"
         : state.importMode === "photo" && state.pendingPhotoFile && !hasPhotoRecipe
           ? "Extract Recipe"
           : "Save Recipe";
+}
+
+function showPhotoError(message) {
+  state.photoImportError = message;
+  state.isPhotoBackendBlocked = isBackendSetupError(message);
+  elements.photoStatus.textContent = state.isPhotoBackendBlocked
+    ? "Photo extraction is waiting for backend setup."
+    : "Photo extraction needs attention.";
+  elements.photoError.textContent = message;
+  elements.photoError.classList.remove("hidden");
+  updateImportButtonState();
+}
+
+function clearPhotoError() {
+  state.photoImportError = "";
+  state.isPhotoBackendBlocked = false;
+  elements.photoError.textContent = "";
+  elements.photoError.classList.add("hidden");
+}
+
+function isBackendSetupError(message) {
+  return /deployed backend|GitHub Pages|aiExtractionEndpoint|OPENAI_API_KEY|backend URL|local dev server/i.test(message || "");
 }
 
 async function reloadRecipes() {

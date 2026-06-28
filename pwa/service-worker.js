@@ -1,4 +1,4 @@
-const CACHE_NAME = "recipe-cookbook-pwa-v13";
+const CACHE_NAME = "recipe-cookbook-pwa-v14";
 
 const APP_SHELL = [
   "./",
@@ -6,12 +6,12 @@ const APP_SHELL = [
   "./styles.css",
   "./manifest.webmanifest",
   "./assets/icon.svg",
-  "./src/app.js?v=20260628-extraction3",
-  "./src/aiRecipe.js?v=20260628-extraction3",
-  "./src/config.js?v=20260628-extraction3",
-  "./src/db.js?v=20260628-extraction3",
-  "./src/parser.js?v=20260628-extraction3",
-  "./src/units.js?v=20260628-extraction3"
+  "./src/app.js?v=20260628-extraction4",
+  "./src/aiRecipe.js?v=20260628-extraction4",
+  "./src/config.js?v=20260628-extraction4",
+  "./src/db.js?v=20260628-extraction4",
+  "./src/parser.js?v=20260628-extraction4",
+  "./src/units.js?v=20260628-extraction4"
 ];
 
 self.addEventListener("install", (event) => {

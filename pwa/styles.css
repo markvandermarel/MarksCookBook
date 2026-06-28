@@ -808,6 +808,24 @@ h3 {
   line-height: 1.45;
 }
 
+.inline-alert {
+  display: grid;
+  gap: var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+  background: var(--panel-muted);
+  color: var(--text);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
+.inline-alert.error {
+  border-color: color-mix(in srgb, var(--danger), var(--border) 52%);
+  background: color-mix(in srgb, var(--danger), var(--panel-raised) 94%);
+}
+
 .ingredient-filter-list {
   display: grid;
   gap: var(--space-2);
@@ -846,6 +864,7 @@ h3 {
   position: fixed;
   right: var(--space-4);
   bottom: calc(var(--space-4) + env(safe-area-inset-bottom));
+  z-index: 20;
   max-width: min(420px, calc(100vw - 32px));
   transform: translateY(18px);
   opacity: 0;
