@@ -27,6 +27,8 @@
           </button>
         </header>
 
+        <section id="accountPanel" class="account-panel" aria-live="polite"></section>
+
         <section class="toolbar-panel" aria-label="Search and filters">
           <label class="search-box">
             <span class="sr-only">Search recipes or ingredients</span>
@@ -39,6 +41,25 @@
               <option value="all">Match All</option>
               <option value="any">Match Any</option>
             </select>
+          </div>
+          <div id="sharedFilters" class="shared-filters hidden">
+            <label>
+              Added by
+              <select id="creatorFilterSelect" aria-label="Filter by recipe creator"></select>
+            </label>
+            <label>
+              Liked by
+              <select id="likedByFilterSelect" aria-label="Filter by person who liked a recipe"></select>
+            </label>
+            <label>
+              Maybe liked by
+              <select id="maybeByFilterSelect" aria-label="Filter by person who maybe liked a recipe"></select>
+            </label>
+            <label class="toggle-row">
+              <input id="myFavoritesFilter" type="checkbox" />
+              <span>My favorites</span>
+            </label>
+            <button id="clearSharedFiltersButton" class="secondary-button compact-button" type="button">Clear</button>
           </div>
           <div id="selectedIngredientChips" class="chip-row" aria-live="polite"></div>
         </section>
@@ -169,6 +190,6 @@
         });
       })();
     </script>
-    <script type="module" src="./src/app.js?v=20260628-urlai1"></script>
+    <script type="module" src="./src/app.js?v=20260628-family1"></script>
   </body>
 </html>

@@ -1,5 +1,5 @@
 const DB_NAME = "recipe-cookbook-pwa";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let dbPromise;
 
@@ -20,6 +20,13 @@ export function openDatabase() {
       if (!db.objectStoreNames.contains("settings")) {
         db.createObjectStore("settings", { keyPath: "key" });
       }
+
+      if (!db.objectStoreNames.contains("cloudRecipes")) {
+        const cloudStore = db.createObjectStore("cloudRecipes", { keyPath: "id" });
+        cloudStore.createIndex("householdId", "householdId");
+        cloudStore.createIndex("updatedAt", "updatedAt");
+        cloudStore.createIndex("title", "title");
+      }
     };
 
     request.onsuccess = () => resolve(request.result);
@@ -33,6 +40,16 @@ export async function listRecipes() {
   const db = await openDatabase();
   return requestToPromise(db.transaction("recipes", "readonly").objectStore("recipes").getAll())
     .then((recipes) => recipes.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt)));
+}
+
+export async function listCachedCloudRecipes(householdId = "") {
+  const db = await openDatabase();
+  const store = db.transaction("cloudRecipes", "readonly").objectStore("cloudRecipes");
+  const recipes = householdId
+    ? await requestToPromise(store.index("householdId").getAll(householdId))
+    : await requestToPromise(store.getAll());
+
+  return recipes.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
 }
 
 export async function getRecipe(id) {
@@ -52,6 +69,37 @@ export async function saveRecipe(recipe) {
 
   await requestToPromise(db.transaction("recipes", "readwrite").objectStore("recipes").put(nextRecipe));
   return nextRecipe;
+}
+
+export async function cacheCloudRecipes(recipes) {
+  const db = await openDatabase();
+  const tx = db.transaction("cloudRecipes", "readwrite");
+  const store = tx.objectStore("cloudRecipes");
+
+  for (const recipe of recipes) {
+    store.put({ ...recipe, syncSource: "cloud" });
+  }
+
+  await transactionComplete(tx);
+}
+
+export async function replaceCloudRecipeCache(householdId, recipes) {
+  const db = await openDatabase();
+  const existing = await requestToPromise(
+    db.transaction("cloudRecipes", "readonly").objectStore("cloudRecipes").index("householdId").getAll(householdId)
+  );
+  const tx = db.transaction("cloudRecipes", "readwrite");
+  const store = tx.objectStore("cloudRecipes");
+
+  for (const recipe of existing) {
+    store.delete(recipe.id);
+  }
+
+  for (const recipe of recipes) {
+    store.put({ ...recipe, syncSource: "cloud" });
+  }
+
+  await transactionComplete(tx);
 }
 
 export async function deleteRecipe(id) {

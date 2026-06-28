@@ -1,12 +1,28 @@
-import { deleteRecipe, exportDatabase, listRecipes, saveRecipe } from "./db.js?v=20260628-urlai1";
-import { extractRecipeFromPhoto, extractRecipeFromURL, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-urlai1";
-import { extractRecipeFromHTML, parseRecipeText } from "./parser.js?v=20260628-urlai1";
-import { formatIngredient } from "./units.js?v=20260628-urlai1";
+import {
+  deleteRecipe as deleteLocalRecipe,
+  exportDatabase,
+  listCachedCloudRecipes,
+  listRecipes as listLocalRecipes,
+  replaceCloudRecipeCache,
+  saveRecipe as saveLocalRecipe
+} from "./db.js?v=20260628-family1";
+import { extractRecipeFromPhoto, extractRecipeFromURL, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-family1";
+import { createFamilyCloudClient, initialsForProfile, REACTION_OPTIONS, reactionLabel } from "./cloud.js?v=20260628-family1";
+import { extractRecipeFromHTML, parseRecipeText } from "./parser.js?v=20260628-family1";
+import { formatIngredient } from "./units.js?v=20260628-family1";
 
 const state = {
   recipes: [],
+  localRecipes: [],
+  cloudRecipes: [],
+  members: [],
+  reactions: [],
   selectedId: "",
   selectedIngredients: new Set(),
+  creatorFilterUserId: "",
+  likedByUserId: "",
+  maybeByUserId: "",
+  myFavoritesOnly: false,
   matchMode: "all",
   search: "",
   unitSystem: "original",
@@ -17,15 +33,28 @@ const state = {
   pendingPhotoRecipe: null,
   isLoading: true,
   loadError: "",
+  cloudError: "",
   photoImportError: "",
   isPhotoBackendBlocked: false,
   isPhotoExtracting: false,
   isImportSaving: false,
+  isMigratingLocalRecipes: false,
+  cloudClient: null,
+  auth: {
+    isConfigured: false,
+    status: "initializing",
+    user: null,
+    profile: null,
+    membership: null,
+    householdId: "",
+    disabledReason: ""
+  },
   objectURLs: new Set()
 };
 
 const elements = {
   addRecipeButton: document.querySelector("#addRecipeButton"),
+  accountPanel: document.querySelector("#accountPanel"),
   addDialog: document.querySelector("#addDialog"),
   importDialog: document.querySelector("#importDialog"),
   ingredientDialog: document.querySelector("#ingredientDialog"),
@@ -45,6 +74,12 @@ const elements = {
   searchInput: document.querySelector("#searchInput"),
   ingredientMatchSelect: document.querySelector("#ingredientMatchSelect"),
   ingredientFilterButton: document.querySelector("#ingredientFilterButton"),
+  sharedFilters: document.querySelector("#sharedFilters"),
+  creatorFilterSelect: document.querySelector("#creatorFilterSelect"),
+  likedByFilterSelect: document.querySelector("#likedByFilterSelect"),
+  maybeByFilterSelect: document.querySelector("#maybeByFilterSelect"),
+  myFavoritesFilter: document.querySelector("#myFavoritesFilter"),
+  clearSharedFiltersButton: document.querySelector("#clearSharedFiltersButton"),
   selectedIngredientChips: document.querySelector("#selectedIngredientChips"),
   ingredientFilterList: document.querySelector("#ingredientFilterList"),
   clearIngredientsButton: document.querySelector("#clearIngredientsButton"),
@@ -60,6 +95,7 @@ async function init() {
   bindEvents();
   render();
   await reloadRecipes();
+  await setupCloudClient();
 }
 
 function bindEvents() {
@@ -76,6 +112,31 @@ function bindEvents() {
 
   elements.ingredientMatchSelect.addEventListener("change", (event) => {
     state.matchMode = event.target.value;
+    render();
+  });
+
+  elements.creatorFilterSelect.addEventListener("change", (event) => {
+    state.creatorFilterUserId = event.target.value;
+    render();
+  });
+
+  elements.likedByFilterSelect.addEventListener("change", (event) => {
+    state.likedByUserId = event.target.value;
+    render();
+  });
+
+  elements.maybeByFilterSelect.addEventListener("change", (event) => {
+    state.maybeByUserId = event.target.value;
+    render();
+  });
+
+  elements.myFavoritesFilter.addEventListener("change", (event) => {
+    state.myFavoritesOnly = event.target.checked;
+    render();
+  });
+
+  elements.clearSharedFiltersButton.addEventListener("click", () => {
+    clearSharedRecipeFilters();
     render();
   });
 
@@ -118,6 +179,36 @@ function bindEvents() {
       showPhotoError(error.message || "Photo extraction failed.");
     }
   });
+}
+
+async function setupCloudClient() {
+  try {
+    state.cloudClient = await createFamilyCloudClient({
+      onAuthChange: handleCloudAuthChange,
+      onDataChange: (data) => {
+        void handleCloudDataChange(data);
+      },
+      onError: (message) => {
+        state.cloudError = message;
+        toast(message);
+        render();
+      }
+    });
+
+    state.auth.isConfigured = state.cloudClient.isConfigured;
+    state.auth.disabledReason = state.cloudClient.disabledReason || "";
+    state.auth.status = state.cloudClient.isConfigured ? "signedOut" : "disabled";
+    state.cloudClient.start();
+    render();
+  } catch (error) {
+    state.auth = {
+      ...state.auth,
+      isConfigured: false,
+      status: "error",
+      disabledReason: error.message || "Shared cookbook sign-in could not be initialized."
+    };
+    render();
+  }
 }
 
 function openImportDialog(mode) {
@@ -201,7 +292,7 @@ async function parseAndSaveImport() {
       ingredientCount: recipe.ingredients.length,
       instructionCount: recipe.instructions.length
     });
-    const savedRecipe = await saveRecipe(recipe);
+    const savedRecipe = await persistRecipe(recipe);
     state.selectedId = savedRecipe.id;
     elements.importDialog.close();
     await reloadRecipes();
@@ -330,7 +421,7 @@ function clearPhotoError() {
 }
 
 function isBackendSetupError(message) {
-  return /deployed backend|GitHub Pages|aiExtractionEndpoint|OPENAI_API_KEY|backend URL|local dev server/i.test(message || "");
+  return /deployed backend|GitHub Pages|aiExtractionEndpoint|OPENAI_API_KEY|ALLOWED_ORIGIN|backend URL|local dev server/i.test(message || "");
 }
 
 async function reloadRecipes() {
@@ -339,7 +430,11 @@ async function reloadRecipes() {
   render();
 
   try {
-    state.recipes = await listRecipes();
+    state.localRecipes = await listLocalRecipes();
+    if (hasHouseholdAccess()) {
+      state.cloudRecipes = await listCachedCloudRecipes(state.auth.householdId);
+    }
+    composeRecipes();
     if (!state.selectedId && state.recipes.length) state.selectedId = state.recipes[0].id;
   } catch (error) {
     state.recipes = [];
@@ -352,10 +447,202 @@ async function reloadRecipes() {
   }
 }
 
+async function handleCloudAuthChange(authState) {
+  state.auth = {
+    ...state.auth,
+    ...authState,
+    user: authState.user || null,
+    profile: authState.profile || null,
+    membership: authState.membership || null,
+    disabledReason: authState.disabledReason || state.auth.disabledReason || ""
+  };
+
+  state.cloudError = authState.message || "";
+
+  if (authState.status !== "authorized") {
+    state.cloudRecipes = [];
+    state.members = [];
+    state.reactions = [];
+  } else {
+    state.cloudRecipes = await listCachedCloudRecipes(authState.householdId);
+  }
+
+  await reloadLocalRecipes();
+  render();
+}
+
+async function handleCloudDataChange(data) {
+  state.cloudRecipes = Array.isArray(data.recipes) ? data.recipes : state.cloudRecipes;
+  state.members = Array.isArray(data.members) ? data.members : state.members;
+  state.reactions = Array.isArray(data.reactions) ? data.reactions : state.reactions;
+
+  if (hasHouseholdAccess()) {
+    await replaceCloudRecipeCache(state.auth.householdId, state.cloudRecipes);
+  }
+
+  await reloadLocalRecipes();
+  render();
+}
+
+async function reloadLocalRecipes() {
+  state.localRecipes = await listLocalRecipes();
+  composeRecipes();
+}
+
+function composeRecipes() {
+  const cloudIds = new Set(state.cloudRecipes.map((recipe) => recipe.id));
+  const cloudRecipes = hasHouseholdAccess()
+    ? state.cloudRecipes.map((recipe) => decorateRecipe({ ...recipe, localOnly: false }))
+    : [];
+  const localRecipes = state.localRecipes
+    .filter((recipe) => !cloudIds.has(recipe.id))
+    .map((recipe) => decorateRecipe({ ...recipe, localOnly: true }));
+
+  state.recipes = (hasHouseholdAccess() ? [...cloudRecipes, ...localRecipes] : localRecipes)
+    .sort((left, right) => new Date(right.updatedAt) - new Date(left.updatedAt));
+
+  if (state.selectedId && !state.recipes.some((recipe) => recipe.id === state.selectedId)) {
+    state.selectedId = state.recipes[0]?.id || "";
+  }
+}
+
+function decorateRecipe(recipe) {
+  const creator = memberForUser(recipe.createdByUserId);
+  const reactions = reactionsForRecipe(recipe.id);
+  const userReaction = currentUserReaction(recipe.id);
+
+  return {
+    ...recipe,
+    creatorInitials: recipe.localOnly ? "Local" : creator?.initials || initialsForProfile({ email: recipe.createdByUserId || "" }),
+    creatorName: recipe.localOnly ? "This device" : creator?.displayName || "Family member",
+    reactionSummary: summarizeReactions(reactions),
+    userReaction
+  };
+}
+
 function render() {
+  composeRecipes();
+  renderAccountPanel();
+  renderSharedFilters();
   renderSelectedChips();
   renderRecipeList();
   renderDetail();
+}
+
+function renderAccountPanel() {
+  if (!elements.accountPanel) return;
+
+  const localCount = localOnlyRecipeCount();
+  const auth = state.auth;
+  const profile = auth.profile || {};
+  const initials = initialsForProfile(profile);
+  const displayName = profile.displayName || profile.email || "Family member";
+  const email = profile.email || "";
+  const status = auth.status;
+  const statusClass = ["account-panel", status === "authorized" ? "ready" : "", status === "pending" ? "warning" : ""]
+    .filter(Boolean)
+    .join(" ");
+
+  elements.accountPanel.className = statusClass;
+
+  if (status === "disabled" || !auth.isConfigured) {
+    elements.accountPanel.innerHTML = `
+      <div class="account-copy">
+        <strong>Local cookbook</strong>
+        <span>${escapeHTML(auth.disabledReason || "Shared sign-in is waiting for Firebase setup.")}</span>
+      </div>
+    `;
+    return;
+  }
+
+  if (status === "initializing" || status === "checking") {
+    elements.accountPanel.innerHTML = `
+      <div class="account-copy">
+        <strong>Family cookbook</strong>
+        <span>${status === "checking" ? "Checking household access..." : "Preparing sign-in..."}</span>
+      </div>
+      <div class="mini-spinner" aria-hidden="true"></div>
+    `;
+    return;
+  }
+
+  if (status === "signedOut") {
+    elements.accountPanel.innerHTML = `
+      <div class="account-copy">
+        <strong>Family cookbook</strong>
+        <span>Sign in to sync recipes with the household. Local recipes stay on this device.</span>
+      </div>
+      <button id="signInButton" class="secondary-button compact-button" type="button">Sign in</button>
+    `;
+    elements.accountPanel.querySelector("#signInButton")?.addEventListener("click", signInToFamilyCookbook);
+    return;
+  }
+
+  if (status === "pending") {
+    elements.accountPanel.innerHTML = `
+      <div class="account-identity">
+        <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
+        <div class="account-copy">
+          <strong>Access pending</strong>
+          <span>${escapeHTML(email)} is signed in. A household owner can add this account in Firebase.</span>
+        </div>
+      </div>
+      <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
+    `;
+    elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
+    return;
+  }
+
+  if (status === "error") {
+    elements.accountPanel.innerHTML = `
+      <div class="account-copy">
+        <strong>Sharing needs attention</strong>
+        <span>${escapeHTML(auth.disabledReason || state.cloudError || "Shared cookbook access could not be checked.")}</span>
+      </div>
+      <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
+    `;
+    elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
+    return;
+  }
+
+  elements.accountPanel.innerHTML = `
+    <div class="account-stack">
+      <div class="account-identity">
+        <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
+        <div class="account-copy">
+          <strong>${escapeHTML(displayName)}</strong>
+          <span>${escapeHTML(auth.membership?.role || "member")} in ${escapeHTML(auth.householdId || "family cookbook")}</span>
+        </div>
+      </div>
+      ${
+        localCount
+          ? `<div class="migration-row">
+              <span>${localCount} local ${localCount === 1 ? "recipe" : "recipes"} ready to share</span>
+              <button id="migrateLocalButton" class="primary-button compact-button" type="button" ${state.isMigratingLocalRecipes ? "disabled" : ""}>
+                ${state.isMigratingLocalRecipes ? "Uploading..." : "Upload"}
+              </button>
+            </div>`
+          : ""
+      }
+    </div>
+    <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
+  `;
+  elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
+  elements.accountPanel.querySelector("#migrateLocalButton")?.addEventListener("click", migrateLocalRecipesToCloud);
+}
+
+function renderSharedFilters() {
+  const showFilters = hasHouseholdAccess();
+  elements.sharedFilters.classList.toggle("hidden", !showFilters);
+
+  if (!showFilters) return;
+
+  const people = peopleForFilters();
+  const options = [{ value: "", label: "Anyone" }, ...people.map((person) => ({ value: person.userId, label: person.displayName }))];
+  fillSelect(elements.creatorFilterSelect, options, state.creatorFilterUserId);
+  fillSelect(elements.likedByFilterSelect, options, state.likedByUserId);
+  fillSelect(elements.maybeByFilterSelect, options, state.maybeByUserId);
+  elements.myFavoritesFilter.checked = state.myFavoritesOnly;
 }
 
 function renderSelectedChips() {
@@ -405,7 +692,7 @@ function renderRecipeList() {
   const recipes = filteredRecipes();
 
   if (!recipes.length) {
-    const hasFilters = Boolean(state.search.trim() || state.selectedIngredients.size);
+    const hasFilters = hasActiveRecipeFilters();
     elements.recipeList.replaceChildren(
       createStatePanel({
         icon: hasFilters ? "0" : "+",
@@ -423,7 +710,7 @@ function renderRecipeList() {
   const cards = recipes.map((recipe) => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "recipe-card";
+    button.className = ["recipe-card", recipe.localOnly ? "local-only" : ""].filter(Boolean).join(" ");
     button.setAttribute("aria-current", recipe.id === state.selectedId ? "true" : "false");
     button.addEventListener("click", () => {
       state.selectedId = recipe.id;
@@ -444,7 +731,10 @@ function renderRecipeList() {
       <div class="meta-row">
         <span>${recipe.ingredients.length} ingredients</span>
         <span>${sourceLabel(recipe.sourceType)}</span>
+        ${renderCreatorPill(recipe)}
+        ${recipe.localOnly ? `<span>On this device</span>` : ""}
       </div>
+      ${renderCardReactionSummary(recipe)}
     `;
 
     button.append(image, content);
@@ -513,8 +803,104 @@ function createStatePanel({ tone = "", icon = "", title, message, actionLabel = 
 function clearRecipeFilters() {
   state.search = "";
   state.selectedIngredients.clear();
+  clearSharedRecipeFilters();
   elements.searchInput.value = "";
   render();
+}
+
+function clearSharedRecipeFilters() {
+  state.creatorFilterUserId = "";
+  state.likedByUserId = "";
+  state.maybeByUserId = "";
+  state.myFavoritesOnly = false;
+}
+
+async function signInToFamilyCookbook() {
+  try {
+    await state.cloudClient.signIn();
+  } catch (error) {
+    toast(error.message || "Google sign-in could not be started.");
+  }
+}
+
+async function signOutOfFamilyCookbook() {
+  try {
+    await state.cloudClient.signOut();
+  } catch (error) {
+    toast(error.message || "Sign-out failed.");
+  }
+}
+
+async function migrateLocalRecipesToCloud() {
+  if (!hasHouseholdAccess()) {
+    toast("Sign in with household access before uploading local recipes.");
+    return;
+  }
+
+  const cloudIds = new Set(state.cloudRecipes.map((recipe) => recipe.id));
+  const recipesToUpload = state.localRecipes.filter((recipe) => !cloudIds.has(recipe.id));
+  if (!recipesToUpload.length) return;
+
+  state.isMigratingLocalRecipes = true;
+  render();
+
+  try {
+    for (const recipe of recipesToUpload) {
+      await state.cloudClient.saveRecipe({
+        ...recipe,
+        householdId: state.auth.householdId,
+        createdByUserId: state.auth.user.uid,
+        localOnly: false
+      });
+    }
+    toast(`${recipesToUpload.length} local ${recipesToUpload.length === 1 ? "recipe" : "recipes"} uploaded.`);
+  } catch (error) {
+    toast(error.message || "Local recipes could not be uploaded.");
+  } finally {
+    state.isMigratingLocalRecipes = false;
+    await reloadRecipes();
+  }
+}
+
+async function persistRecipe(recipe) {
+  if (hasHouseholdAccess() && !recipe.localOnly) {
+    const savedRecipe = await state.cloudClient.saveRecipe(recipe);
+    state.cloudRecipes = [savedRecipe, ...state.cloudRecipes.filter((cloudRecipe) => cloudRecipe.id !== savedRecipe.id)];
+    composeRecipes();
+    return savedRecipe;
+  }
+
+  return saveLocalRecipe(recipeForLocalStorage(recipe));
+}
+
+async function removeRecipe(recipe) {
+  if (hasHouseholdAccess() && !recipe.localOnly) {
+    await state.cloudClient.deleteRecipe(recipe.id);
+    return;
+  }
+
+  await deleteLocalRecipe(recipe.id);
+}
+
+async function chooseReaction(recipe, requestedReaction) {
+  if (!hasHouseholdAccess()) {
+    toast("Sign in to share recipe reactions.");
+    return;
+  }
+
+  if (recipe.localOnly) {
+    toast("Upload this local recipe before adding a family reaction.");
+    return;
+  }
+
+  const nextReaction = recipe.userReaction === requestedReaction ? "" : requestedReaction;
+
+  try {
+    await state.cloudClient.setRecipeReaction(recipe, nextReaction);
+    toast(nextReaction ? `${reactionLabel(nextReaction)} saved.` : "Reaction cleared.");
+  } catch (error) {
+    toast(error.message || "Reaction could not be saved.");
+  }
 }
 
 function renderDetail() {
@@ -563,6 +949,8 @@ function renderDetail() {
     return;
   }
 
+  const deleteDisabled = canDeleteRecipe(recipe) ? "" : "disabled";
+
   elements.detailPane.innerHTML = `
     <article class="detail-content">
       <button class="secondary-button mobile-back" id="mobileBackButton" type="button">Back</button>
@@ -570,11 +958,16 @@ function renderDetail() {
         <div>
           <h2 class="detail-title">${escapeHTML(recipe.title)}</h2>
           ${recipe.description ? `<p class="detail-description">${escapeHTML(recipe.description)}</p>` : ""}
+          <div class="detail-meta">
+            ${renderCreatorPill(recipe)}
+            ${recipe.localOnly ? `<span class="meta-pill">On this device</span>` : `<span class="meta-pill">${escapeHTML(sourceLabel(recipe.sourceType))}</span>`}
+          </div>
         </div>
         <img class="hero-image" id="heroImage" alt="">
       </section>
 
       <section class="control-band" aria-label="Recipe controls">
+        ${renderReactionControls(recipe)}
         <div class="control-grid">
           <label>Servings
             <input id="servingsInput" type="number" min="1" max="60" step="1" value="${Number(recipe.currentServings || recipe.originalServings)}">
@@ -596,7 +989,7 @@ function renderDetail() {
         </div>
         <div class="detail-actions">
           <button id="exportButton" class="secondary-button" type="button">Export JSON</button>
-          <button id="deleteButton" class="danger-button" type="button">Delete</button>
+          <button id="deleteButton" class="danger-button" type="button" ${deleteDisabled}>Delete</button>
         </div>
       </section>
 
@@ -632,7 +1025,7 @@ function bindDetailEvents(recipe) {
 
   elements.detailPane.querySelector("#servingsInput").addEventListener("change", async (event) => {
     recipe.currentServings = Math.max(1, Number(event.target.value) || recipe.originalServings);
-    await saveRecipe(recipe);
+    await persistRecipe(recipe);
     await reloadRecipes();
   });
 
@@ -650,12 +1043,22 @@ function bindDetailEvents(recipe) {
   elements.detailPane.querySelector("#exportButton").addEventListener("click", exportJSONBackup);
   elements.detailPane.querySelector("#deleteButton").addEventListener("click", async () => {
     if (!confirm(`Delete "${recipe.title}"?`)) return;
-    await deleteRecipe(recipe.id);
+    await removeRecipe(recipe);
     state.selectedId = "";
     state.stepIndex = 0;
     elements.detailPane.classList.remove("open");
     await reloadRecipes();
     toast("Recipe deleted.");
+  });
+
+  elements.detailPane.querySelectorAll("[data-reaction]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      await chooseReaction(recipe, button.dataset.reaction);
+    });
+  });
+
+  elements.detailPane.querySelector("#clearReactionButton")?.addEventListener("click", async () => {
+    await chooseReaction(recipe, "");
   });
 
   elements.detailPane.querySelector("#previousStepButton")?.addEventListener("click", () => {
@@ -667,6 +1070,86 @@ function bindDetailEvents(recipe) {
     state.stepIndex = Math.min(recipe.instructions.length - 1, state.stepIndex + 1);
     renderDetail();
   });
+}
+
+function renderCreatorPill(recipe) {
+  const initials = recipe.creatorInitials || "?";
+  const label = recipe.localOnly ? "This device" : recipe.creatorName || "Family member";
+  return `
+    <span class="creator-pill">
+      <span class="avatar-initials small" aria-hidden="true">${escapeHTML(initials)}</span>
+      <span>${escapeHTML(label)}</span>
+    </span>
+  `;
+}
+
+function renderCardReactionSummary(recipe) {
+  if (recipe.localOnly || !hasHouseholdAccess()) return "";
+
+  const parts = REACTION_OPTIONS
+    .map((option) => {
+      const count = recipe.reactionSummary?.[option.value] || 0;
+      return count ? `<span>${escapeHTML(option.label)} ${count}</span>` : "";
+    })
+    .filter(Boolean);
+
+  if (!parts.length) return "";
+  return `<div class="card-reactions">${parts.join("")}</div>`;
+}
+
+function renderReactionControls(recipe) {
+  if (recipe.localOnly) {
+    return `
+      <div class="reaction-panel muted">
+        <div>
+          <strong>Family reaction</strong>
+          <span>Upload this local recipe to collect household reactions.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  if (!hasHouseholdAccess()) {
+    return `
+      <div class="reaction-panel muted">
+        <div>
+          <strong>Family reaction</strong>
+          <span>Sign in to react to shared recipes.</span>
+        </div>
+      </div>
+    `;
+  }
+
+  const buttons = REACTION_OPTIONS
+    .map(
+      (option) => `
+        <button
+          class="reaction-button"
+          type="button"
+          data-reaction="${escapeHTML(option.value)}"
+          aria-pressed="${recipe.userReaction === option.value ? "true" : "false"}"
+        >
+          ${escapeHTML(option.label)}
+        </button>
+      `
+    )
+    .join("");
+  const clearButton = recipe.userReaction
+    ? `<button id="clearReactionButton" class="secondary-button compact-button" type="button">Clear</button>`
+    : "";
+
+  return `
+    <div class="reaction-panel">
+      <div>
+        <strong>Family reaction</strong>
+        <span>${recipe.userReaction ? `You chose ${escapeHTML(reactionLabel(recipe.userReaction))}.` : "Choose your reaction."}</span>
+      </div>
+      <div class="reaction-actions">
+        <div class="reaction-buttons">${buttons}</div>
+        ${clearButton}
+      </div>
+    </div>
+  `;
 }
 
 function renderIngredient(ingredient, recipe) {
@@ -773,6 +1256,10 @@ function filteredRecipes() {
       !query || recipe.title.toLowerCase().includes(query) || ingredientNames.some((ingredient) => ingredient.includes(query));
 
     if (!matchesQuery) return false;
+    if (state.creatorFilterUserId && recipe.createdByUserId !== state.creatorFilterUserId) return false;
+    if (state.likedByUserId && !recipeLikedByUser(recipe.id, state.likedByUserId)) return false;
+    if (state.maybeByUserId && !recipeMaybeLikedByUser(recipe.id, state.maybeByUserId)) return false;
+    if (state.myFavoritesOnly && !recipeLikedByUser(recipe.id, state.auth.user?.uid || "")) return false;
     if (!state.selectedIngredients.size) return true;
 
     const selected = [...state.selectedIngredients].map((ingredient) => ingredient.toLowerCase());
@@ -838,6 +1325,119 @@ function titleCase(value) {
     .join(" ");
 }
 
+function hasHouseholdAccess() {
+  return Boolean(state.cloudClient?.isConfigured && state.auth.status === "authorized" && state.auth.user && state.auth.membership);
+}
+
+function localOnlyRecipeCount() {
+  if (!hasHouseholdAccess()) return 0;
+  const cloudIds = new Set(state.cloudRecipes.map((recipe) => recipe.id));
+  return state.localRecipes.filter((recipe) => !cloudIds.has(recipe.id)).length;
+}
+
+function memberForUser(userId) {
+  if (!userId) return null;
+  return (
+    state.members.find((member) => member.userId === userId) ||
+    (state.auth.profile?.userId === userId
+      ? {
+          ...state.auth.profile,
+          initials: state.auth.profile.initials || initialsForProfile(state.auth.profile)
+        }
+      : null)
+  );
+}
+
+function peopleForFilters() {
+  const people = new Map();
+  const addPerson = (person) => {
+    if (!person?.userId) return;
+    people.set(person.userId, {
+      userId: person.userId,
+      displayName: person.displayName || person.email || "Family member",
+      initials: person.initials || initialsForProfile(person)
+    });
+  };
+
+  state.members.forEach(addPerson);
+  if (state.auth.profile) addPerson(state.auth.profile);
+
+  for (const recipe of state.cloudRecipes) {
+    addPerson(memberForUser(recipe.createdByUserId) || {
+      userId: recipe.createdByUserId,
+      displayName: "Family member"
+    });
+  }
+
+  for (const reaction of state.reactions) {
+    addPerson(memberForUser(reaction.userId) || {
+      userId: reaction.userId,
+      displayName: "Family member"
+    });
+  }
+
+  return [...people.values()].sort((left, right) => left.displayName.localeCompare(right.displayName));
+}
+
+function reactionsForRecipe(recipeId) {
+  return state.reactions.filter((reaction) => reaction.recipeId === recipeId);
+}
+
+function currentUserReaction(recipeId) {
+  const userId = state.auth.user?.uid;
+  if (!userId) return "";
+  return state.reactions.find((reaction) => reaction.recipeId === recipeId && reaction.userId === userId)?.reaction || "";
+}
+
+function recipeLikedByUser(recipeId, userId) {
+  if (!userId) return false;
+  const reaction = state.reactions.find((item) => item.recipeId === recipeId && item.userId === userId)?.reaction;
+  return reaction === "like" || reaction === "would_eat_again";
+}
+
+function recipeMaybeLikedByUser(recipeId, userId) {
+  if (!userId) return false;
+  return state.reactions.some((item) => item.recipeId === recipeId && item.userId === userId && item.reaction === "maybe");
+}
+
+function summarizeReactions(reactions) {
+  return REACTION_OPTIONS.reduce((summary, option) => {
+    summary[option.value] = reactions.filter((reaction) => reaction.reaction === option.value).length;
+    return summary;
+  }, {});
+}
+
+function hasActiveRecipeFilters() {
+  return Boolean(
+    state.search.trim() ||
+      state.selectedIngredients.size ||
+      state.creatorFilterUserId ||
+      state.likedByUserId ||
+      state.maybeByUserId ||
+      state.myFavoritesOnly
+  );
+}
+
+function canDeleteRecipe(recipe) {
+  if (recipe.localOnly || !hasHouseholdAccess()) return true;
+  const role = state.auth.membership?.role || "";
+  return recipe.createdByUserId === state.auth.user?.uid || role === "owner" || role === "admin";
+}
+
+function recipeForLocalStorage(recipe) {
+  const {
+    localOnly,
+    reactionSummary,
+    userReaction,
+    creatorInitials,
+    creatorName,
+    syncSource,
+    ...payload
+  } = recipe;
+
+  return payload;
+}
+
 function selectedRecipe() {
   return state.recipes.find((recipe) => recipe.id === state.selectedId) || state.recipes[0] || null;
 }
@@ -861,7 +1461,16 @@ async function setImageSource(img, image) {
 }
 
 async function exportJSONBackup() {
-  const backup = await exportDatabase();
+  const backup = hasHouseholdAccess()
+    ? {
+        exportedAt: new Date().toISOString(),
+        version: 2,
+        source: "shared-family-cookbook",
+        householdId: state.auth.householdId,
+        recipes: state.cloudRecipes,
+        localRecipes: state.localRecipes.filter((recipe) => !state.cloudRecipes.some((cloudRecipe) => cloudRecipe.id === recipe.id))
+      }
+    : await exportDatabase();
   const blob = new Blob([JSON.stringify(backup, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -873,6 +1482,18 @@ async function exportJSONBackup() {
 
 function option(value, label, selectedValue) {
   return `<option value="${value}" ${value === selectedValue ? "selected" : ""}>${label}</option>`;
+}
+
+function fillSelect(select, options, value) {
+  select.replaceChildren(
+    ...options.map((optionItem) => {
+      const optionElement = document.createElement("option");
+      optionElement.value = optionItem.value;
+      optionElement.textContent = optionItem.label;
+      optionElement.selected = optionItem.value === value;
+      return optionElement;
+    })
+  );
 }
 
 function displayImageType(type) {

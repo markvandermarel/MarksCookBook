@@ -1,0 +1,138 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function verifiedEmail() {
+      return signedIn()
+        && request.auth.token.email is string
+        && request.auth.token.email_verified == true;
+    }
+
+    function memberDocumentId(householdId) {
+      return householdId + "_" + request.auth.uid;
+    }
+
+    function memberPath(householdId) {
+      return /databases/$(database)/documents/householdMembers/$(memberDocumentId(householdId));
+    }
+
+    function invitePath(householdId) {
+      return /databases/$(database)/documents/householdInvites/$(householdId + "_" + request.auth.token.email);
+    }
+
+    function isHouseholdMember(householdId) {
+      return signedIn()
+        && exists(memberPath(householdId))
+        && get(memberPath(householdId)).data.status == "active";
+    }
+
+    function isHouseholdAdmin(householdId) {
+      return isHouseholdMember(householdId)
+        && get(memberPath(householdId)).data.role in ["owner", "admin"];
+    }
+
+    function hasOpenInvite(householdId) {
+      return verifiedEmail()
+        && exists(invitePath(householdId))
+        && get(invitePath(householdId)).data.email == request.auth.token.email
+        && get(invitePath(householdId)).data.status == "open";
+    }
+
+    function canClaimInvite() {
+      return hasOpenInvite(request.resource.data.householdId)
+        && request.resource.data.userId == request.auth.uid
+        && request.resource.data.email == request.auth.token.email
+        && request.resource.data.status == "active"
+        && request.resource.data.role == get(invitePath(request.resource.data.householdId)).data.role
+        && request.resource.data.householdId is string;
+    }
+
+    function validReaction(value) {
+      return value in ["like", "would_eat_again", "maybe", "okay"];
+    }
+
+    function recipePath(recipeId) {
+      return /databases/$(database)/documents/recipes/$(recipeId);
+    }
+
+    match /profiles/{userId} {
+      allow get: if signedIn() && userId == request.auth.uid;
+      allow list: if false;
+      allow create: if signedIn()
+        && userId == request.auth.uid
+        && request.resource.data.userId == request.auth.uid;
+      allow update: if signedIn()
+        && userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId;
+      allow delete: if false;
+    }
+
+    match /households/{householdId} {
+      allow read: if isHouseholdMember(householdId);
+      allow create, update, delete: if isHouseholdAdmin(householdId);
+    }
+
+    match /householdMembers/{memberId} {
+      allow get: if signedIn()
+        && (memberId.matches("^.*_" + request.auth.uid + "$")
+          || isHouseholdMember(resource.data.householdId));
+      allow list: if isHouseholdMember(resource.data.householdId);
+      allow create: if isHouseholdAdmin(request.resource.data.householdId) || canClaimInvite();
+      allow update, delete: if isHouseholdAdmin(resource.data.householdId);
+    }
+
+    match /householdInvites/{inviteId} {
+      allow get: if verifiedEmail() && resource.data.email == request.auth.token.email;
+      allow list: if isHouseholdAdmin(resource.data.householdId);
+      allow create: if isHouseholdAdmin(request.resource.data.householdId)
+        && request.resource.data.email is string
+        && request.resource.data.role in ["member", "admin"]
+        && request.resource.data.status == "open";
+      allow update, delete: if isHouseholdAdmin(resource.data.householdId);
+    }
+
+    match /recipes/{recipeId} {
+      allow read: if isHouseholdMember(resource.data.householdId);
+      allow create: if isHouseholdMember(request.resource.data.householdId)
+        && request.resource.data.id == recipeId
+        && request.resource.data.createdByUserId == request.auth.uid
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if isHouseholdMember(resource.data.householdId)
+        && request.resource.data.householdId == resource.data.householdId
+        && request.resource.data.createdByUserId == resource.data.createdByUserId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if isHouseholdMember(resource.data.householdId)
+        && (resource.data.createdByUserId == request.auth.uid || isHouseholdAdmin(resource.data.householdId));
+    }
+
+    match /recipeReactions/{reactionId} {
+      allow read: if isHouseholdMember(resource.data.householdId);
+      allow create: if signedIn()
+        && request.resource.data.userId == request.auth.uid
+        && validReaction(request.resource.data.reaction)
+        && isHouseholdMember(request.resource.data.householdId)
+        && exists(recipePath(request.resource.data.recipeId))
+        && get(recipePath(request.resource.data.recipeId)).data.householdId == request.resource.data.householdId
+        && request.resource.data.createdAt == request.time
+        && request.resource.data.updatedAt == request.time;
+      allow update: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.recipeId == resource.data.recipeId
+        && request.resource.data.householdId == resource.data.householdId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && validReaction(request.resource.data.reaction)
+        && isHouseholdMember(resource.data.householdId)
+        && request.resource.data.updatedAt == request.time;
+      allow delete: if signedIn()
+        && resource.data.userId == request.auth.uid
+        && isHouseholdMember(resource.data.householdId);
+    }
+  }
+}

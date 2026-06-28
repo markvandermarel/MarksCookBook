@@ -6,6 +6,8 @@ npm-debug.log*
 .env.*
 !.env.example
 !.env.local.example
+pwa/src/firebase-config.js
+.firebaserc
 *.xcuserdata/
 *.xcuserstate
 .DS_Store

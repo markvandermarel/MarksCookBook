@@ -1,6 +1,6 @@
-import { appConfig } from "./config.js?v=20260628-urlai1";
-import { parseIngredientLine } from "./parser.js?v=20260628-urlai1";
-import { parseUnit } from "./units.js?v=20260628-urlai1";
+import { appConfig } from "./config.js?v=20260628-family1";
+import { parseIngredientLine } from "./parser.js?v=20260628-family1";
+import { parseUnit } from "./units.js?v=20260628-family1";
 
 const PHOTO_MAX_DIMENSION = 1800;
 const PHOTO_JPEG_QUALITY = 0.82;
@@ -53,7 +53,7 @@ export async function extractRecipeFromPhoto(file, onProgress = () => {}) {
       message: error.message || String(error)
     });
     throw new Error(
-      `Could not reach the photo extraction backend at ${safeEndpointLabel(endpoint)}. Start the local dev server or check the deployed endpoint URL.`
+      `Could not reach the photo extraction backend at ${safeEndpointLabel(endpoint)}. If that URL opens with {"error":"Use POST."}, check the backend CORS setting: Vercel ALLOWED_ORIGIN must exactly match ${currentPageOrigin()}.`
     );
   }
 
@@ -133,7 +133,7 @@ export async function extractRecipeFromURL(urlText, pageText = "", onProgress = 
       message: error.message || String(error)
     });
     throw new Error(
-      `Could not reach the recipe extraction backend at ${safeEndpointLabel(endpoint)}. Start the local dev server or check the deployed endpoint URL.`
+      `Could not reach the recipe extraction backend at ${safeEndpointLabel(endpoint)}. If that URL opens with {"error":"Use POST."}, check the backend CORS setting: Vercel ALLOWED_ORIGIN must exactly match ${currentPageOrigin()}.`
     );
   }
 
@@ -374,4 +374,9 @@ function endpointConfigurationError(endpoint, sourceLabel = "Photo extraction") 
 
 function isGitHubPagesHost(hostname) {
   return hostname === "github.io" || hostname.endsWith(".github.io");
+}
+
+function currentPageOrigin() {
+  if (typeof window === "undefined" || !window.location?.origin) return "the deployed PWA origin";
+  return window.location.origin;
 }
