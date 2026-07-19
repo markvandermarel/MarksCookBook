@@ -7,7 +7,7 @@ export const REACTION_OPTIONS = [
   { value: "okay", label: "Okay" }
 ];
 
-const PLACEHOLDER_PATTERN = /^(your-|000000|1:000000|family$)/i;
+const PLACEHOLDER_PATTERN = /^(your-|000000|1:000000)/i;
 const LOCAL_CONFIG_PATH = "./firebase-config.js";
 
 export async function createFamilyCloudClient({ onAuthChange = () => {}, onDataChange = () => {}, onError = () => {} } = {}) {
