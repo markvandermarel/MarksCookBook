@@ -22,12 +22,13 @@
             <p class="eyebrow">Private Cookbook</p>
             <h1>Recipes</h1>
           </div>
-          <button class="icon-button primary" id="addRecipeButton" type="button" aria-label="Add recipe">
-            <span aria-hidden="true">+</span>
-          </button>
+          <div class="header-actions">
+            <button class="icon-button primary" id="addRecipeButton" type="button" aria-label="Add recipe">
+              <span aria-hidden="true">+</span>
+            </button>
+            <div id="accountPanel" class="account-menu" aria-live="polite"></div>
+          </div>
         </header>
-
-        <section id="accountPanel" class="account-panel" aria-live="polite"></section>
 
         <section class="toolbar-panel" aria-label="Search and filters">
           <label class="search-box">
@@ -35,33 +36,39 @@
             <input id="searchInput" type="search" placeholder="Search recipes or ingredients" autocomplete="off" />
           </label>
 
-          <div class="filter-row">
-            <button class="secondary-button" id="ingredientFilterButton" type="button">Ingredients</button>
-            <select id="ingredientMatchSelect" aria-label="Ingredient filter mode">
-              <option value="all">Match All</option>
-              <option value="any">Match Any</option>
-            </select>
+          <button class="secondary-button filter-toggle-button" id="filterToggleButton" type="button" aria-expanded="false" aria-controls="filterPanel">
+            <span>Filter</span>
+          </button>
+
+          <div id="filterPanel" class="filter-panel" aria-hidden="true">
+            <div class="filter-row">
+              <button class="secondary-button" id="ingredientFilterButton" type="button">Ingredients</button>
+              <select id="ingredientMatchSelect" aria-label="Ingredient filter mode">
+                <option value="all">Match All</option>
+                <option value="any">Match Any</option>
+              </select>
+            </div>
+            <div id="sharedFilters" class="shared-filters hidden">
+              <label>
+                Added by
+                <select id="creatorFilterSelect" aria-label="Filter by recipe creator"></select>
+              </label>
+              <label>
+                Liked by
+                <select id="likedByFilterSelect" aria-label="Filter by person who liked a recipe"></select>
+              </label>
+              <label>
+                Maybe liked by
+                <select id="maybeByFilterSelect" aria-label="Filter by person who maybe liked a recipe"></select>
+              </label>
+              <label class="toggle-row">
+                <input id="myFavoritesFilter" type="checkbox" />
+                <span>My favorites</span>
+              </label>
+              <button id="clearSharedFiltersButton" class="secondary-button compact-button" type="button">Clear</button>
+            </div>
+            <div id="selectedIngredientChips" class="chip-row" aria-live="polite"></div>
           </div>
-          <div id="sharedFilters" class="shared-filters hidden">
-            <label>
-              Added by
-              <select id="creatorFilterSelect" aria-label="Filter by recipe creator"></select>
-            </label>
-            <label>
-              Liked by
-              <select id="likedByFilterSelect" aria-label="Filter by person who liked a recipe"></select>
-            </label>
-            <label>
-              Maybe liked by
-              <select id="maybeByFilterSelect" aria-label="Filter by person who maybe liked a recipe"></select>
-            </label>
-            <label class="toggle-row">
-              <input id="myFavoritesFilter" type="checkbox" />
-              <span>My favorites</span>
-            </label>
-            <button id="clearSharedFiltersButton" class="secondary-button compact-button" type="button">Clear</button>
-          </div>
-          <div id="selectedIngredientChips" class="chip-row" aria-live="polite"></div>
         </section>
 
         <main id="recipeList" class="recipe-list" aria-live="polite"></main>
@@ -190,6 +197,6 @@
         });
       })();
     </script>
-    <script type="module" src="./src/app.js?v=20260628-family1"></script>
+    <script type="module" src="./src/app.js?v=20260719-filters"></script>
   </body>
 </html>

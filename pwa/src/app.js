@@ -8,6 +8,12 @@ import {
 } from "./db.js?v=20260628-family1";
 import { extractRecipeFromPhoto, extractRecipeFromURL, recipeFromExtractedRecipe, recipeToEditableJSON } from "./aiRecipe.js?v=20260628-family1";
 import { createFamilyCloudClient, initialsForProfile, REACTION_OPTIONS, reactionLabel } from "./cloud.js?v=20260628-family1";
+import {
+  ingredientFilterLabelForKey,
+  ingredientFilterOption,
+  ingredientMatchesFilter,
+  ingredientSearchTerms
+} from "./ingredientFilters.js?v=20260719-filters";
 import { extractRecipeFromHTML, parseRecipeText } from "./parser.js?v=20260628-family1";
 import { formatIngredient } from "./units.js?v=20260628-family1";
 
@@ -23,6 +29,8 @@ const state = {
   likedByUserId: "",
   maybeByUserId: "",
   myFavoritesOnly: false,
+  isFilterPanelOpen: false,
+  isAccountMenuOpen: false,
   matchMode: "all",
   search: "",
   unitSystem: "original",
@@ -72,6 +80,8 @@ const elements = {
   recipeTextInput: document.querySelector("#recipeTextInput"),
   parseRecipeButton: document.querySelector("#parseRecipeButton"),
   searchInput: document.querySelector("#searchInput"),
+  filterToggleButton: document.querySelector("#filterToggleButton"),
+  filterPanel: document.querySelector("#filterPanel"),
   ingredientMatchSelect: document.querySelector("#ingredientMatchSelect"),
   ingredientFilterButton: document.querySelector("#ingredientFilterButton"),
   sharedFilters: document.querySelector("#sharedFilters"),
@@ -107,6 +117,13 @@ function bindEvents() {
 
   elements.searchInput.addEventListener("input", (event) => {
     state.search = event.target.value;
+    render();
+  });
+
+  elements.filterToggleButton.addEventListener("click", () => {
+    const nextOpen = !state.isFilterPanelOpen;
+    state.isFilterPanelOpen = nextOpen;
+    if (nextOpen) state.isAccountMenuOpen = false;
     render();
   });
 
@@ -535,103 +552,171 @@ function renderAccountPanel() {
   const localCount = localOnlyRecipeCount();
   const auth = state.auth;
   const profile = auth.profile || {};
-  const initials = initialsForProfile(profile);
+  const initials = accountInitials(auth, profile);
   const displayName = profile.displayName || profile.email || "Family member";
   const email = profile.email || "";
   const status = auth.status;
-  const statusClass = ["account-panel", status === "authorized" ? "ready" : "", status === "pending" ? "warning" : ""]
+  const statusClass = ["account-menu", status === "authorized" ? "ready" : "", status === "pending" ? "warning" : ""]
     .filter(Boolean)
     .join(" ");
+  const menuHidden = state.isAccountMenuOpen ? "" : "hidden";
+  const buttonLabel = accountButtonLabel(auth, displayName);
 
   elements.accountPanel.className = statusClass;
 
   if (status === "disabled" || !auth.isConfigured) {
     elements.accountPanel.innerHTML = `
-      <div class="account-copy">
-        <strong>Local cookbook</strong>
-        <span>${escapeHTML(auth.disabledReason || "Shared sign-in is waiting for Firebase setup.")}</span>
+      <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+        ${escapeHTML(initials)}
+      </button>
+      <div class="account-popover" ${menuHidden}>
+        <div class="account-copy">
+          <strong>Local cookbook</strong>
+          <span>${escapeHTML(auth.disabledReason || "Shared sign-in is waiting for Firebase setup.")}</span>
+        </div>
       </div>
     `;
+    bindAccountMenuButton();
     return;
   }
 
   if (status === "initializing" || status === "checking") {
     elements.accountPanel.innerHTML = `
-      <div class="account-copy">
-        <strong>Family cookbook</strong>
-        <span>${status === "checking" ? "Checking household access..." : "Preparing sign-in..."}</span>
+      <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+        ${escapeHTML(initials)}
+      </button>
+      <div class="account-popover" ${menuHidden}>
+        <div class="account-copy">
+          <strong>Family cookbook</strong>
+          <span>${status === "checking" ? "Checking household access..." : "Preparing sign-in..."}</span>
+        </div>
+        <div class="mini-spinner" aria-hidden="true"></div>
       </div>
-      <div class="mini-spinner" aria-hidden="true"></div>
     `;
+    bindAccountMenuButton();
     return;
   }
 
   if (status === "signedOut") {
     elements.accountPanel.innerHTML = `
-      <div class="account-copy">
-        <strong>Family cookbook</strong>
-        <span>Sign in to sync recipes with the household. Local recipes stay on this device.</span>
+      <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+        ${escapeHTML(initials)}
+      </button>
+      <div class="account-popover" ${menuHidden}>
+        <div class="account-copy">
+          <strong>Family cookbook</strong>
+          <span>Sign in to sync recipes with the household. Local recipes stay on this device.</span>
+        </div>
+        <button id="signInButton" class="secondary-button compact-button" type="button">Sign in</button>
       </div>
-      <button id="signInButton" class="secondary-button compact-button" type="button">Sign in</button>
     `;
+    bindAccountMenuButton();
     elements.accountPanel.querySelector("#signInButton")?.addEventListener("click", signInToFamilyCookbook);
     return;
   }
 
   if (status === "pending") {
     elements.accountPanel.innerHTML = `
-      <div class="account-identity">
-        <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
-        <div class="account-copy">
-          <strong>Access pending</strong>
-          <span>${escapeHTML(email)} is signed in. A household owner can add this account in Firebase.</span>
+      <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+        ${escapeHTML(initials)}
+      </button>
+      <div class="account-popover" ${menuHidden}>
+        <div class="account-identity">
+          <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
+          <div class="account-copy">
+            <strong>Access pending</strong>
+            <span>${escapeHTML(email)} is signed in. A household owner can add this account in Firebase.</span>
+          </div>
         </div>
+        <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
       </div>
-      <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
     `;
+    bindAccountMenuButton();
     elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
     return;
   }
 
   if (status === "error") {
     elements.accountPanel.innerHTML = `
-      <div class="account-copy">
-        <strong>Sharing needs attention</strong>
-        <span>${escapeHTML(auth.disabledReason || state.cloudError || "Shared cookbook access could not be checked.")}</span>
+      <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+        ${escapeHTML(initials)}
+      </button>
+      <div class="account-popover" ${menuHidden}>
+        <div class="account-copy">
+          <strong>Sharing needs attention</strong>
+          <span>${escapeHTML(auth.disabledReason || state.cloudError || "Shared cookbook access could not be checked.")}</span>
+        </div>
+        <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
       </div>
-      <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
     `;
+    bindAccountMenuButton();
     elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
     return;
   }
 
   elements.accountPanel.innerHTML = `
-    <div class="account-stack">
-      <div class="account-identity">
-        <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
-        <div class="account-copy">
-          <strong>${escapeHTML(displayName)}</strong>
-          <span>${escapeHTML(auth.membership?.role || "member")} in ${escapeHTML(auth.householdId || "family cookbook")}</span>
+    <button class="account-button" id="accountMenuButton" type="button" aria-expanded="${state.isAccountMenuOpen ? "true" : "false"}" aria-label="${escapeHTML(buttonLabel)}">
+      ${escapeHTML(initials)}
+    </button>
+    <div class="account-popover" ${menuHidden}>
+      <div class="account-stack">
+        <div class="account-identity">
+          <span class="avatar-initials" aria-hidden="true">${escapeHTML(initials)}</span>
+          <div class="account-copy">
+            <strong>${escapeHTML(displayName)}</strong>
+            <span>${escapeHTML(auth.membership?.role || "member")} in ${escapeHTML(auth.householdId || "family cookbook")}</span>
+          </div>
         </div>
+        ${
+          localCount
+            ? `<div class="migration-row">
+                <span>${localCount} local ${localCount === 1 ? "recipe" : "recipes"} ready to share</span>
+                <button id="migrateLocalButton" class="primary-button compact-button" type="button" ${state.isMigratingLocalRecipes ? "disabled" : ""}>
+                  ${state.isMigratingLocalRecipes ? "Uploading..." : "Upload"}
+                </button>
+              </div>`
+            : ""
+        }
       </div>
-      ${
-        localCount
-          ? `<div class="migration-row">
-              <span>${localCount} local ${localCount === 1 ? "recipe" : "recipes"} ready to share</span>
-              <button id="migrateLocalButton" class="primary-button compact-button" type="button" ${state.isMigratingLocalRecipes ? "disabled" : ""}>
-                ${state.isMigratingLocalRecipes ? "Uploading..." : "Upload"}
-              </button>
-            </div>`
-          : ""
-      }
+      <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
     </div>
-    <button id="signOutButton" class="secondary-button compact-button" type="button">Sign out</button>
   `;
+  bindAccountMenuButton();
   elements.accountPanel.querySelector("#signOutButton")?.addEventListener("click", signOutOfFamilyCookbook);
   elements.accountPanel.querySelector("#migrateLocalButton")?.addEventListener("click", migrateLocalRecipesToCloud);
 }
 
+function bindAccountMenuButton() {
+  elements.accountPanel.querySelector("#accountMenuButton")?.addEventListener("click", () => {
+    const nextOpen = !state.isAccountMenuOpen;
+    state.isAccountMenuOpen = nextOpen;
+    if (nextOpen) state.isFilterPanelOpen = false;
+    render();
+  });
+}
+
+function accountInitials(auth, profile) {
+  if (auth.status === "signedOut") return "IN";
+  if (auth.status === "disabled" || !auth.isConfigured) return "LC";
+  return initialsForProfile(profile);
+}
+
+function accountButtonLabel(auth, displayName) {
+  if (auth.status === "signedOut") return "Open account menu to sign in";
+  if (auth.status === "disabled" || !auth.isConfigured) return "Open local cookbook status";
+  return `Open account menu for ${displayName}`;
+}
+
 function renderSharedFilters() {
+  const activeCount = activeRecipeFilterCount();
+  elements.filterToggleButton.setAttribute("aria-expanded", state.isFilterPanelOpen ? "true" : "false");
+  elements.filterPanel.classList.toggle("open", state.isFilterPanelOpen);
+  elements.filterPanel.setAttribute("aria-hidden", state.isFilterPanelOpen ? "false" : "true");
+  elements.filterToggleButton.innerHTML = `
+    <span>Filter</span>
+    ${activeCount ? `<span class="filter-count">${activeCount}</span>` : ""}
+  `;
+
   const showFilters = hasHouseholdAccess();
   elements.sharedFilters.classList.toggle("hidden", !showFilters);
 
@@ -646,16 +731,18 @@ function renderSharedFilters() {
 }
 
 function renderSelectedChips() {
+  const options = allIngredientOptions();
   elements.selectedIngredientChips.replaceChildren(
     ...[...state.selectedIngredients].sort().map((ingredient) => {
       const chip = document.createElement("span");
       chip.className = "chip";
-      chip.textContent = ingredient;
+      const label = ingredientFilterLabelForKey(ingredient, options);
+      chip.textContent = label;
 
       const button = document.createElement("button");
       button.type = "button";
       button.textContent = "x";
-      button.setAttribute("aria-label", `Remove ${ingredient}`);
+      button.setAttribute("aria-label", `Remove ${label}`);
       button.addEventListener("click", () => {
         state.selectedIngredients.delete(ingredient);
         render();
@@ -708,9 +795,10 @@ function renderRecipeList() {
   }
 
   const cards = recipes.map((recipe) => {
+    const imageSource = bestImage(recipe);
     const button = document.createElement("button");
     button.type = "button";
-    button.className = ["recipe-card", recipe.localOnly ? "local-only" : ""].filter(Boolean).join(" ");
+    button.className = ["recipe-card", imageSource ? "" : "no-thumb", recipe.localOnly ? "local-only" : ""].filter(Boolean).join(" ");
     button.setAttribute("aria-current", recipe.id === state.selectedId ? "true" : "false");
     button.addEventListener("click", () => {
       state.selectedId = recipe.id;
@@ -718,11 +806,6 @@ function renderRecipeList() {
       render();
       elements.detailPane.classList.add("open");
     });
-
-    const image = document.createElement("img");
-    image.className = "recipe-thumb";
-    image.alt = "";
-    setImageSource(image, bestImage(recipe));
 
     const content = document.createElement("div");
     content.innerHTML = `
@@ -737,7 +820,15 @@ function renderRecipeList() {
       ${renderCardReactionSummary(recipe)}
     `;
 
-    button.append(image, content);
+    if (imageSource) {
+      const image = document.createElement("img");
+      image.className = "recipe-thumb";
+      image.alt = "";
+      setImageSource(image, imageSource);
+      button.append(image);
+    }
+
+    button.append(content);
     return button;
   });
 
@@ -950,11 +1041,12 @@ function renderDetail() {
   }
 
   const deleteDisabled = canDeleteRecipe(recipe) ? "" : "disabled";
+  const heroImage = bestImage(recipe);
 
   elements.detailPane.innerHTML = `
     <article class="detail-content">
       <button class="secondary-button mobile-back" id="mobileBackButton" type="button">Back</button>
-      <section class="detail-hero">
+      <section class="detail-hero ${heroImage ? "" : "no-hero-image"}">
         <div>
           <h2 class="detail-title">${escapeHTML(recipe.title)}</h2>
           ${recipe.description ? `<p class="detail-description">${escapeHTML(recipe.description)}</p>` : ""}
@@ -1013,7 +1105,7 @@ function renderDetail() {
   `;
 
   const hero = elements.detailPane.querySelector("#heroImage");
-  setImageSource(hero, bestImage(recipe));
+  setImageSource(hero, heroImage);
   bindDetailEvents(recipe);
   hydrateDetailImages(recipe);
 }
@@ -1222,7 +1314,7 @@ async function hydrateDetailImages(recipe) {
 }
 
 function renderIngredientDialog() {
-  const ingredients = allIngredientNames();
+  const ingredients = allIngredientOptions();
   if (!ingredients.length) {
     elements.ingredientFilterList.innerHTML = `<p class="hint">No ingredients saved yet.</p>`;
     return;
@@ -1233,13 +1325,13 @@ function renderIngredientDialog() {
       const label = document.createElement("label");
       const checkbox = document.createElement("input");
       checkbox.type = "checkbox";
-      checkbox.checked = state.selectedIngredients.has(ingredient);
+      checkbox.checked = state.selectedIngredients.has(ingredient.key);
       checkbox.addEventListener("change", () => {
-        if (checkbox.checked) state.selectedIngredients.add(ingredient);
-        else state.selectedIngredients.delete(ingredient);
+        if (checkbox.checked) state.selectedIngredients.add(ingredient.key);
+        else state.selectedIngredients.delete(ingredient.key);
         render();
       });
-      label.append(checkbox, document.createTextNode(ingredient));
+      label.append(checkbox, document.createTextNode(ingredient.label));
       return label;
     })
   );
@@ -1248,10 +1340,7 @@ function renderIngredientDialog() {
 function filteredRecipes() {
   const query = state.search.trim().toLowerCase();
   return state.recipes.filter((recipe) => {
-    const ingredientNames = recipe.ingredients.flatMap((ingredient) => [
-      ingredient.name.toLowerCase(),
-      ingredientFilterName(ingredient).toLowerCase()
-    ]);
+    const ingredientNames = recipe.ingredients.flatMap(ingredientSearchTerms);
     const matchesQuery =
       !query || recipe.title.toLowerCase().includes(query) || ingredientNames.some((ingredient) => ingredient.includes(query));
 
@@ -1262,12 +1351,31 @@ function filteredRecipes() {
     if (state.myFavoritesOnly && !recipeLikedByUser(recipe.id, state.auth.user?.uid || "")) return false;
     if (!state.selectedIngredients.size) return true;
 
-    const selected = [...state.selectedIngredients].map((ingredient) => ingredient.toLowerCase());
     if (state.matchMode === "all") {
-      return selected.every((ingredient) => ingredientNames.some((name) => name.includes(ingredient)));
+      return [...state.selectedIngredients].every((key) => recipe.ingredients.some((ingredient) => ingredientMatchesFilter(ingredient, key)));
     }
-    return selected.some((ingredient) => ingredientNames.some((name) => name.includes(ingredient)));
+    return [...state.selectedIngredients].some((key) => recipe.ingredients.some((ingredient) => ingredientMatchesFilter(ingredient, key)));
   });
+}
+
+function allIngredientOptions() {
+  const optionsByKey = new Map();
+  for (const ingredient of state.recipes.flatMap((recipe) => recipe.ingredients)) {
+    const option = ingredientFilterOption(ingredient);
+    if (option.label && !optionsByKey.has(option.key)) optionsByKey.set(option.key, option);
+  }
+
+  return [...optionsByKey.values()].sort((a, b) => a.label.localeCompare(b.label));
+}
+
+function activeRecipeFilterCount() {
+  return [
+    ...state.selectedIngredients,
+    state.creatorFilterUserId,
+    state.likedByUserId,
+    state.maybeByUserId,
+    state.myFavoritesOnly ? "favorites" : ""
+  ].filter(Boolean).length;
 }
 
 function allIngredientNames() {
@@ -1452,12 +1560,15 @@ function bestImage(recipe) {
 
 async function setImageSource(img, image) {
   if (!img) return;
-  if (!image) {
-    img.src = "./assets/icon.svg";
+  const source = image?.remoteURL || "";
+  if (!source) {
+    img.removeAttribute("src");
+    img.classList.add("hidden");
     return;
   }
 
-  img.src = image.remoteURL || "./assets/icon.svg";
+  img.classList.remove("hidden");
+  img.src = source;
 }
 
 async function exportJSONBackup() {

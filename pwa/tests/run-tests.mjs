@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import extractRecipeHandler from "../../api/extract-recipe.js";
+import { ingredientFilterName, ingredientFilterOption } from "../src/ingredientFilters.js";
 import { recipeFromExtractedRecipe } from "../src/aiRecipe.js";
 import { extractRecipeFromHTML, importRecipeFromURL, parseIngredientLine, parseRecipeText, splitInstructions } from "../src/parser.js";
 import { convertAmount, formatFraction, scaleAmount } from "../src/units.js";
@@ -18,6 +19,15 @@ assert.equal(ingredient.name, "all-purpose flour");
 const prepared = parseIngredientLine("2 tbsp finely chopped parsley");
 assert.equal(prepared.preparationNote, "finely chopped");
 assert.equal(prepared.name, "parsley");
+
+assert.equal(ingredientFilterName({ name: "Parmezaanse kaas" }), "Parmezaanse Kaas");
+assert.equal(ingredientFilterName({ name: "mint leaves" }), "Mint Leaf");
+assert.equal(ingredientFilterName({ name: "garlic cloves" }), "Garlic Clove");
+assert.equal(ingredientFilterOption({ name: "Garlic cloves" }).label, "Garlic, Knoblauch, Knoflook");
+assert.equal(ingredientFilterOption({ name: "Knoblauchzehen" }).key, "garlic");
+assert.equal(ingredientFilterOption({ name: "knoflooktenen" }).key, "garlic");
+assert.equal(ingredientFilterOption({ name: "Mint Leav" }).label, "Mint, Minze, Munt");
+assert.equal(ingredientFilterOption({ name: "Parmezaanse Kaa" }).label, "Parmesan, Parmesan, Parmezaanse kaas");
 
 const unicodeIngredient = parseIngredientLine("\u00bd cup sugar");
 assert.equal(unicodeIngredient.amount, 0.5);
